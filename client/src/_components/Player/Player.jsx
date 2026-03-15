@@ -1,5 +1,5 @@
 import { HiUsers } from "react-icons/hi";
-import { useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import MusicSeek from "@/_components/Player/MusicSeek.jsx";
 import Volume from "@/_components/Player/Volume.jsx";
 import MusicInfo from "@/_components/Player/MusicInfo.jsx";
@@ -15,6 +15,7 @@ import MobileController from "./mobile/MobileController";
 import Toast from "@/utils/Toasts/Toast";
 import tuneMateInstance from "@/service/api/api";
 import MusicControls from "./MusicControls";
+import FloatingMessage from "./FloatingMessage";
 
 const Player = () => {
   const {
@@ -24,7 +25,7 @@ const Player = () => {
     AudioRef,
     handleAudioPlay,
     playSong,
-    setMusicSeekTime
+    setMusicSeekTime,
   } = usePlayerStore();
 
   const { isAuthenticated, userId } = useAuthStore();
@@ -34,11 +35,15 @@ const Player = () => {
     closeWebSocket,
     socket,
     setConnectionStatus,
-    setUserDetails
+    setUserDetails,
   } = useWebSocketStore();
 
   const { isUserSyncVisible, showUserSync, hideUserSync } = useUserSyncStore();
   const { isNotifierVisible, showNotifier } = useNotifierStore();
+  const [incomingMessage, setIncomingMessage] = useState("");
+  const [isIncomingMessageVisible, setIsIncomingMessageVisible] =
+    useState(false);
+  const floatingMessageTimeoutRef = useRef(null);
 
   // ----- Initialization -----
   const initializePlayerState = useCallback(async () => {
@@ -49,6 +54,22 @@ const Player = () => {
       console.error("Error loading player state: ", error);
     }
   }, [loadPlayerState, getFavorites]);
+
+  const showIncomingFloatingMessage = useCallback((chat) => {
+    const incomingChat = typeof chat === "string" ? chat.trim() : "";
+    if (!incomingChat) return;
+
+    setIncomingMessage(incomingChat);
+    setIsIncomingMessageVisible(true);
+
+    if (floatingMessageTimeoutRef.current) {
+      clearTimeout(floatingMessageTimeoutRef.current);
+    }
+
+    floatingMessageTimeoutRef.current = setTimeout(() => {
+      setIsIncomingMessageVisible(false);
+    }, 3500);
+  }, []);
 
   // Memoize the WebSocket message handler to avoid unnecessary re-creations
   const handleSocketMessage = useCallback(
@@ -66,14 +87,14 @@ const Player = () => {
           case "CONNECTION_DECLINED":
             Toast({
               type: "error",
-              message: `${data.payload.declinedBy} declined to connect`
+              message: `${data.payload.declinedBy} declined to connect`,
             });
             break;
 
           case "INVALID_ACTION":
             Toast({
               type: "error",
-              message: `${data.payload.message}`
+              message: `${data.payload.message}`,
             });
             break;
 
@@ -84,14 +105,14 @@ const Player = () => {
               setConnectionStatus(true);
               Toast({
                 type: "success",
-                message: `${data.payload.username} accepted`
+                message: `${data.payload.username} accepted`,
               });
             } catch (error) {
               console.error("Error handling connection acceptance:", error);
               Toast({
                 type: "error",
                 message:
-                  "Failed to process connection acceptance. Please try again."
+                  "Failed to process connection acceptance. Please try again.",
               });
             }
             break;
@@ -108,11 +129,15 @@ const Player = () => {
             setMusicSeekTime(data.payload.musicSeekTime, false);
             break;
 
+          case "RECEIVE_CHAT":
+            showIncomingFloatingMessage(data.payload.chat);
+            break;
+
           case "CLOSE_CONNECTION":
             setUserDetails(null);
             await tuneMateInstance.updateSyncState({
               userId: "",
-              username: ""
+              username: "",
             });
             hideUserSync();
             break;
@@ -131,8 +156,9 @@ const Player = () => {
       setConnectionStatus,
       setMusicSeekTime,
       playSong,
-      handleAudioPlay
-    ]
+      handleAudioPlay,
+      showIncomingFloatingMessage,
+    ],
   );
 
   // Initialize player state if authenticated
@@ -164,56 +190,72 @@ const Player = () => {
     handleAudioPlay();
   }, [handleAudioPlay]);
 
+  useEffect(() => {
+    return () => {
+      if (floatingMessageTimeoutRef.current) {
+        clearTimeout(floatingMessageTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const UserSyncMemoized = useMemo(() => <UserSync />, [isUserSyncVisible]);
   const UserNotifierMemoized = useMemo(
     () => <UserNotifier />,
-    [isNotifierVisible]
+    [isNotifierVisible],
   );
 
   const isMobile = useMediaQuery("(max-width: 767px)");
 
   // ----- JSX -----
-  return isMobile ? (
-    <MobileController />
-  ) : (
-    <div className="fixed bottom-0 left-0 w-full p-[0.6rem] rounded text-amber-50 z-30 player-background">
-      <div className="flex justify-between items-center">
-        {/* MUSIC INFO */}
-        <div>
-          <MusicInfo song={song} />
+  return (
+    <>
+      {isMobile ? (
+        <MobileController />
+      ) : (
+        <div className="fixed bottom-0 left-0 w-full p-[0.6rem] rounded text-amber-50 z-30 player-background">
+          <div className="flex justify-between items-center">
+            {/* MUSIC INFO */}
+            <div>
+              <MusicInfo song={song} />
+            </div>
+
+            {/* PLAYER CONTROLS */}
+            <div className="flex justify-center items-center">
+              <audio
+                src={song?.downloadUrl[4]?.url}
+                autoPlay
+                ref={AudioRef}
+              ></audio>
+
+              <div className="mr-4">
+                <MusicControls />
+              </div>
+
+              {/* MUSIC SEEK BAR */}
+              <div className="ml-4">
+                <MusicSeek />
+              </div>
+            </div>
+
+            {/* USER SYNC AND VOLUME */}
+            <div className="flex justify-end items-center relative">
+              <div className="mr-5">
+                <HiUsers size={22} cursor={"pointer"} onClick={showUserSync} />
+                {isUserSyncVisible && UserSyncMemoized}
+              </div>
+              {isNotifierVisible && UserNotifierMemoized}
+              <div>
+                <Volume />
+              </div>
+            </div>
+          </div>
         </div>
-
-        {/* PLAYER CONTROLS */}
-        <div className="flex justify-center items-center">
-          <audio
-            src={song?.downloadUrl[4]?.url}
-            autoPlay
-            ref={AudioRef}
-          ></audio>
-
-          <div className="mr-4">
-            <MusicControls />
-          </div>
-
-          {/* MUSIC SEEK BAR */}
-          <div className="ml-4">
-            <MusicSeek />
-          </div>
-        </div>
-
-        {/* USER SYNC AND VOLUME */}
-        <div className="flex justify-end items-center relative">
-          <div className="mr-5">
-            <HiUsers size={22} cursor={"pointer"} onClick={showUserSync} />
-            {isUserSyncVisible && UserSyncMemoized}
-          </div>
-          {isNotifierVisible && UserNotifierMemoized}
-          <div>
-            <Volume />
-          </div>
-        </div>
-      </div>
-    </div>
+      )}
+      <FloatingMessage
+        message={incomingMessage}
+        isVisible={isIncomingMessageVisible}
+      />
+    </>
   );
 };
 

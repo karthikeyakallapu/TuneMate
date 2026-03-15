@@ -4,7 +4,9 @@ let prismaInstance = null;
 
 export const getPrismaInstance = async () => {
     if (!prismaInstance) {
-        prismaInstance = new PrismaClient();
+        prismaInstance = new PrismaClient({
+            datasourceUrl: process.env.DATABASE_URL,
+        });
     }
     return prismaInstance;
 }

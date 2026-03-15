@@ -96,7 +96,7 @@ const usePlayerStore = create(
               ...state,
               isLoading: false,
               isPlaying: true,
-              song: result
+              song: result,
             }));
 
             await tuneMateInstance.updatePlayerState({ songId: id });
@@ -107,8 +107,8 @@ const usePlayerStore = create(
                 duration: result.duration,
                 image: result.image[2].url,
                 artists: getAllArtists(result),
-                album: result.album.name
-              }
+                album: result.album.name,
+              },
             });
           } catch (error) {
             console.error("Error fetching song", error);
@@ -117,7 +117,7 @@ const usePlayerStore = create(
               error:
                 error instanceof PlayerError
                   ? error.message
-                  : "Error fetching song"
+                  : "Error fetching song",
             });
           }
           mutate("user-song-history");
@@ -145,7 +145,7 @@ const usePlayerStore = create(
             await tuneMateInstance.updatePlayerState({
               playListId: id,
               currentSongIndex: currentSongIndex,
-              playListType: type
+              playListType: type,
             });
           } else {
             console.warn("No songs found in the playlist");
@@ -154,7 +154,7 @@ const usePlayerStore = create(
           console.error(
             `Error loading playlist (ID: ${id}, Type: ${type})`,
             error.message,
-            error.stack
+            error.stack,
           );
         }
       },
@@ -171,7 +171,7 @@ const usePlayerStore = create(
         }
         set({ currentSongIndex: nextIndex });
         await tuneMateInstance.updatePlayerState({
-          currentSongIndex: nextIndex
+          currentSongIndex: nextIndex,
         });
         await get().playSong(playlist.songs[nextIndex].id);
       }, 500),
@@ -190,7 +190,7 @@ const usePlayerStore = create(
         }
         set({ currentSongIndex: prevIndex });
         await tuneMateInstance.updatePlayerState({
-          currentSongIndex: prevIndex
+          currentSongIndex: prevIndex,
         });
         await get().playSong(playlist.songs[prevIndex].id);
       }, 500),
@@ -212,7 +212,7 @@ const usePlayerStore = create(
             playListId,
             playListType,
             onLoop,
-            isShuffling
+            isShuffling,
           } = playerState;
 
           set({ currentSongIndex, onLoop, isShuffling });
@@ -225,7 +225,7 @@ const usePlayerStore = create(
             useWebSocketStore.getState().setConnectionStatus(true);
             useWebSocketStore.getState().setUserDetails({
               userId: connectionState.connectedUserId,
-              username: connectionState.connectedUserName
+              username: connectionState.connectedUserName,
             });
             useUserSyncStore.getState().showUserSync();
           }
@@ -233,7 +233,7 @@ const usePlayerStore = create(
           console.error(
             "Error loading player state",
             error.message,
-            error.stack
+            error.stack,
           );
         }
       },
@@ -291,18 +291,23 @@ const usePlayerStore = create(
         let currentStatus = get().isShuffling;
         set({ isShuffling: !currentStatus });
         await tuneMateInstance.updatePlayerState({
-          isShuffling: !currentStatus
+          isShuffling: !currentStatus,
         });
-      }
+      },
+      sendMessage: async (message, shouldBroadcast = true) => {
+        if (shouldBroadcast) {
+          broadcastAction("SEND_CHAT", { chat: message });
+        }
+      },
     }),
     {
       name: "player-state", // persist player state
       partialize: (state) => ({
         volume: state.volume,
-        currentSongIndex: state.currentSongIndex
-      })
-    }
-  )
+        currentSongIndex: state.currentSongIndex,
+      }),
+    },
+  ),
 );
 
 export default usePlayerStore;

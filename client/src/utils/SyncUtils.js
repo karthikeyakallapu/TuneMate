@@ -12,9 +12,9 @@ export const broadcastAction = (action, payload = {}) => {
         payload: {
           action,
           senderId: useAuthStore.getState().userId,
-          ...payload
-        }
-      })
+          ...payload,
+        },
+      }),
     );
   }
 };

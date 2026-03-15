@@ -1,6 +1,7 @@
 import MESSAGE_TYPES from "../utils/messageTypes.js";
 import { getWebSocketByUserId } from "../services/userConnections.js";
 import redisClient from "../config/redisClient.js";
+import { log } from "node:console";
 
 class SyncController {
   // Helper function to validate WebSocket instance
@@ -21,8 +22,8 @@ class SyncController {
       targetWs.send(
         JSON.stringify({
           type: MESSAGE_TYPES.INVALID_ACTION,
-          payload: { message: "You can't self connect" }
-        })
+          payload: { message: "You can't self connect" },
+        }),
       );
       return;
     }
@@ -31,8 +32,8 @@ class SyncController {
     targetWs.send(
       JSON.stringify({
         type: MESSAGE_TYPES.CONNECTION_REQUEST,
-        payload: { username, userId: senderId }
-      })
+        payload: { username, userId: senderId },
+      }),
     );
   }
 
@@ -54,9 +55,9 @@ class SyncController {
         type: MESSAGE_TYPES.CONNECTION_ACCEPTED,
         payload: {
           username: acceptedBy.username,
-          userId: acceptedBy.userId
-        }
-      })
+          userId: acceptedBy.userId,
+        },
+      }),
     );
   }
 
@@ -68,13 +69,15 @@ class SyncController {
     targetWs.send(
       JSON.stringify({
         type: MESSAGE_TYPES.CONNECTION_DECLINED,
-        payload: { declinedBy: sentBy.username }
-      })
+        payload: { declinedBy: sentBy.username },
+      }),
     );
   }
 
   async syncAction(payload) {
     const { senderId, action } = payload;
+    console.log(senderId);
+    console.log(action);
 
     const targetUserId = await redisClient.hget("activeConnections", senderId);
 
@@ -88,8 +91,8 @@ class SyncController {
         case "HANDLE_SONG_PLAY":
           targetWs.send(
             JSON.stringify({
-              type: MESSAGE_TYPES.HANDLE_SONG_PLAY
-            })
+              type: MESSAGE_TYPES.HANDLE_SONG_PLAY,
+            }),
           );
           break;
         case "PLAY_SONG":
@@ -97,9 +100,9 @@ class SyncController {
             JSON.stringify({
               type: MESSAGE_TYPES.PLAY_SONG,
               payload: {
-                songId: payload.songId
-              }
-            })
+                songId: payload.songId,
+              },
+            }),
           );
           break;
 
@@ -108,11 +111,24 @@ class SyncController {
             JSON.stringify({
               type: MESSAGE_TYPES.SEEK,
               payload: {
-                musicSeekTime: payload.musicSeekTime
-              }
-            })
+                musicSeekTime: payload.musicSeekTime,
+              },
+            }),
           );
           break;
+        case "SEND_CHAT":
+          console.log(payload);
+          targetWs.send(
+            JSON.stringify({
+              type: MESSAGE_TYPES.RECEIVE_CHAT,
+              payload: {
+                chat: payload.chat,
+              },
+            }),
+          );
+          break;
+          break;
+
         default:
           console.warn(`Unknown action type: ${action}`);
       }
@@ -135,16 +151,16 @@ class SyncController {
       if (senderWs) {
         senderWs.send(
           JSON.stringify({
-            type: MESSAGE_TYPES.CLOSE_CONNECTION
-          })
+            type: MESSAGE_TYPES.CLOSE_CONNECTION,
+          }),
         );
       }
 
       if (acceptorWs) {
         acceptorWs.send(
           JSON.stringify({
-            type: MESSAGE_TYPES.CLOSE_CONNECTION
-          })
+            type: MESSAGE_TYPES.CLOSE_CONNECTION,
+          }),
         );
       }
     } catch (error) {
