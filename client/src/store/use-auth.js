@@ -60,7 +60,7 @@ const useAuthStore = create((set) => ({
       userId: null,
       userSyncKey: null
     });
-    await useWebSocketStore.getState().closeWebSocket();
+    await useWebSocketStore.getState().closeWebSocket({ clearRoomId: true });
     await useWebSocketStore.getState().setUserDetails(null);
     await useUserSyncStore.getState().hideUserSync();
   }

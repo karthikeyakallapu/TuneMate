@@ -1,32 +1,34 @@
 import { WebSocketServer } from "ws";
 import { addConnection, removeConnection } from "./userConnections.js";
 import { handleMessage } from "../controllers/messageHandler.js";
-import redisClient from "../config/redisClient.js";
+import { removeSocketFromAllRooms } from "../utils/roomUtils.js";
+import RoomControllerInstance from "../controllers/RoomController.js";
 
-export const startWebSocketServer = server => {
+export const startWebSocketServer = (server) => {
   const wss = new WebSocketServer({ server });
 
   wss.on("connection", async (ws, req) => {
     const params = new URL(req.url, `ws://${req.headers.host}`).searchParams;
     const clientId = params.get("userId");
 
-    if (clientId) await addConnection(clientId, ws);
+    ws.userId = clientId;
 
-    ws.on("message", async message => {
+    if (clientId) {
+      const wsId = await addConnection(clientId, ws);
+      ws.wsId = wsId;
+
+      // Auto-rejoin room if user has an active room in Redis
+      await RoomControllerInstance.rejoinRoom(clientId);
+    }
+
+    ws.on("message", async (message) => {
       const data = JSON.parse(message);
       await handleMessage(ws, data);
     });
 
     ws.on("close", async () => {
-      await removeConnection(clientId);
-      const connectedUserId = await redisClient.hget(
-        "activeConnections",
-        clientId
-      );
-      if (connectedUserId) {
-        await redisClient.hdel("activeConnections", clientId);
-        await redisClient.hdel("activeConnections", connectedUserId);
-      }
+      await removeConnection(clientId, ws.wsId);
+      removeSocketFromAllRooms(ws);
     });
   });
 };

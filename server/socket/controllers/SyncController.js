@@ -1,8 +1,8 @@
 import MESSAGE_TYPES from "../utils/messageTypes.js";
 import { getWebSocketByUserId } from "../services/userConnections.js";
-import redisClient from "../config/redisClient.js";
-import { log } from "node:console";
-
+import { redisClient } from "../config/redisClient.js";
+import { nanoid } from "nanoid";
+import { addToRoom } from "../utils/roomUtils.js";
 class SyncController {
   // Helper function to validate WebSocket instance
   async getValidWebSocket(userId) {
@@ -76,8 +76,6 @@ class SyncController {
 
   async syncAction(payload) {
     const { senderId, action } = payload;
-    console.log(senderId);
-    console.log(action);
 
     const targetUserId = await redisClient.hget("activeConnections", senderId);
 
@@ -165,6 +163,81 @@ class SyncController {
       }
     } catch (error) {
       console.error("Failed to close connection:", error);
+    }
+  }
+
+  async createRoom(payload) {
+    try {
+      const { createdBy, createdById } = payload;
+
+      const roomId = nanoid(10);
+
+      console.log(`Creating room ${roomId} by user ${createdBy}`);
+
+      // create room state
+      await redisClient.hset(`room:${roomId}`, {
+        hostId: createdById,
+        isPlaying: false,
+        timestamp: 0,
+        updatedAt: Date.now(),
+      });
+
+      // add creator
+      await redisClient.sadd(`room:${roomId}:members`, createdById);
+
+      // auto cleanup
+      await redisClient.expire(`room:${roomId}`, 36000);
+
+      const senderWs = await this.getValidWebSocket(createdById);
+
+      // Add to Room
+      addToRoom(roomId, senderWs);
+
+      if (senderWs) {
+        senderWs.send(
+          JSON.stringify({
+            type: MESSAGE_TYPES.ROOM_CREATED,
+            payload: {
+              roomId: roomId,
+            },
+          }),
+        );
+      }
+    } catch (error) {
+      console.error("Failed to create room:", error);
+    }
+  }
+
+  async joinRoom(payload) {
+    try {
+      const { roomId, senderId } = payload;
+
+      const exists = await redisClient.exists(`room:${roomId}`);
+
+      const senderWs = await this.getValidWebSocket(senderId);
+
+      if (!exists) {
+        senderWs.send(JSON.stringify({ error: "Room not found" }));
+        return;
+      }
+
+      addToRoom(roomId, senderWs);
+
+      // add to Redis members
+      await redisClient.sadd(`room:${roomId}:members`, userId);
+
+      // send current state
+      const state = await redisClient.hgetall(`room:${roomId}`);
+
+      senderWs.send(
+        JSON.stringify({
+          type: "SYNC",
+          ...state,
+          serverTime: Date.now(),
+        }),
+      );
+    } catch (error) {
+      console.log(error);
     }
   }
 }

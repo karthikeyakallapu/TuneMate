@@ -4,41 +4,106 @@ const useWebSocketStore = create((set, get) => ({
   socket: null,
   connected: false,
   connectionStatus: false,
+  roomId: null,
+  roomMembers: [],
+  roomHostId: null,
   connectId: null,
   userDetails: null,
   setUserDetails: (userDetails) => set({ userDetails }),
   setConnectId: (connectId) => set({ connectId }),
   setConnectionStatus: (status) => set({ connectionStatus: status }),
+  setRoomId: (roomId) => set({ roomId }),
+  setRoomMembers: (members) => set({ roomMembers: members }),
+  clearRoomId: () => set({ roomId: null, roomMembers: [], roomHostId: null }),
   setSocket: (socket) => set({ socket }),
 
   connectWebSocket: (userId) => {
+    const existingSocket = get().socket;
+    if (
+      existingSocket &&
+      (existingSocket.readyState === WebSocket.OPEN ||
+        existingSocket.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
     const baseURL = import.meta.env.VITE_SOCKET_SERVER_URL;
     const socket = new WebSocket(`${baseURL}?userId=${userId}`);
     socket.onopen = () => {
       set({ connected: true, socket });
+      // Server will auto-rejoin room if user has an active one
     };
 
     socket.onmessage = (event) => {
-      JSON.parse(event.data);
+      try {
+        const data = JSON.parse(event.data);
+
+        if (
+          (data.type === "ROOM_CREATED" || data.type === "ROOM_JOINED") &&
+          data.payload?.roomId
+        ) {
+          set({
+            roomId: data.payload.roomId,
+            roomMembers: data.payload.members || [],
+            roomHostId: data.payload.hostId || null,
+          });
+        }
+
+        if (data.type === "MEMBERS_UPDATED" && data.payload?.members) {
+          set({ roomMembers: data.payload.members });
+        }
+
+        if (data.type === "ROOM_LEFT" || data.type === "ROOM_CLOSED") {
+          set({ roomId: null, roomMembers: [], roomHostId: null });
+        }
+
+        if (
+          data.type === "ERROR" &&
+          data.payload?.message === "Room not found"
+        ) {
+          set({ roomId: null, roomMembers: [], roomHostId: null });
+        }
+      } catch (error) {
+        console.error("Failed to parse socket message:", error);
+      }
     };
 
     socket.onclose = () => {
-      set({ connected: false, socket: null });
+      set({
+        connected: false,
+        socket: null,
+        connectionStatus: false,
+        userDetails: null,
+      });
     };
 
     socket.onerror = (error) => {
       console.error("WebSocket error:", error);
-      set({ connected: false, socket: null });
+      set({
+        connected: false,
+        socket: null,
+        connectionStatus: false,
+        userDetails: null,
+      });
     };
   },
 
-  closeWebSocket: () => {
+  closeWebSocket: ({ clearRoomId = false } = {}) => {
     const { socket } = get();
     if (socket) {
       socket.close();
-      set({ connected: false, socket: null });
     }
-  }
+
+    set({
+      connected: false,
+      socket: null,
+      connectionStatus: false,
+      userDetails: null,
+      ...(clearRoomId
+        ? { roomId: null, roomMembers: [], roomHostId: null }
+        : {}),
+    });
+  },
 }));
 
 export default useWebSocketStore;

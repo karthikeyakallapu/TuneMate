@@ -21,7 +21,8 @@ const ENDPOINTS = {
   createRecommended: "/tunemate/createRecommended",
   addSongToRecommended: "/tunemate/recommended/add",
   removeSongFromRecommended: "/tunemate/recommended/remove",
-  recommendedPlaylist: `/tunemate/recommended/:id`
+  recommendedPlaylist: `/tunemate/recommended/:id`,
+  room: `/room`,
 };
 
 export default ENDPOINTS;

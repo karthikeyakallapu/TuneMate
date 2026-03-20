@@ -8,8 +8,8 @@ const token = Cookies.get("accessToken");
 export const tuneMateClient = axios.create({
   baseURL,
   headers: {
-    Authorization: token ? `Bearer ${token}` : undefined
-  }
+    Authorization: token ? `Bearer ${token}` : undefined,
+  },
 });
 
 class TuneMateService {
@@ -17,7 +17,7 @@ class TuneMateService {
     try {
       const response = await tuneMateClient.post(
         ENDPOINTS.addSongToHistory,
-        song
+        song,
       );
       return response.data;
     } catch (err) {
@@ -74,7 +74,7 @@ class TuneMateService {
     try {
       const response = await tuneMateClient.post(
         ENDPOINTS.resendVerificationMail,
-        data
+        data,
       );
       return response.data;
     } catch (err) {
@@ -86,7 +86,7 @@ class TuneMateService {
     try {
       const response = await tuneMateClient.post(
         ENDPOINTS.ManageSongInFavorites,
-        { id }
+        { id },
       );
       return response.data;
     } catch (err) {
@@ -106,7 +106,7 @@ class TuneMateService {
   updatePlayerState = async (state) => {
     try {
       const response = await tuneMateClient.post(ENDPOINTS.updatePlayerState, {
-        state
+        state,
       });
       return response.data;
     } catch (err) {
@@ -136,12 +136,12 @@ class TuneMateService {
       if (role === "admin") {
         const response = await tuneMateClient.post(
           ENDPOINTS.createRecommended,
-          { playlist: data }
+          { playlist: data },
         );
         return response.data;
       }
       const response = await tuneMateClient.post(ENDPOINTS.createNewPlaylist, {
-        playlist: data
+        playlist: data,
       });
       return response.data;
     } catch (err) {
@@ -154,13 +154,13 @@ class TuneMateService {
       if (role === "admin") {
         const response = await tuneMateClient.post(
           ENDPOINTS.addSongToRecommended,
-          data
+          data,
         );
         return response.data;
       }
       const response = await tuneMateClient.post(
         ENDPOINTS.saveSongInPlaylist,
-        data
+        data,
       );
       return response.data;
     } catch (err) {
@@ -173,13 +173,13 @@ class TuneMateService {
       if (role === "admin") {
         const response = await tuneMateClient.post(
           ENDPOINTS.removeSongFromRecommended,
-          data
+          data,
         );
         return response.data;
       }
       const response = await tuneMateClient.post(
         ENDPOINTS.removeSongFromPlaylist,
-        data
+        data,
       );
       return response.data;
     } catch (err) {
@@ -208,7 +208,7 @@ class TuneMateService {
   getRecommendedPlaylist = async (id) => {
     try {
       const response = await tuneMateClient.get(
-        ENDPOINTS.recommendedPlaylist(id)
+        ENDPOINTS.recommendedPlaylist(id),
       );
       return response.data.playlist[0];
     } catch (err) {
@@ -220,7 +220,7 @@ class TuneMateService {
     try {
       const response = await tuneMateClient.post(
         ENDPOINTS.updateSyncState,
-        state
+        state,
       );
       return response.data;
     } catch (err) {
@@ -238,9 +238,12 @@ class TuneMateService {
   };
 
   editUserPlaylist = async (data) => {
-    const { newPlaylistName, playlistForEdit } = data;  
+    const { newPlaylistName, playlistForEdit } = data;
     try {
-      const response = await tuneMateClient.put(ENDPOINTS.playlist(playlistForEdit.id), {newPlaylistName});
+      const response = await tuneMateClient.put(
+        ENDPOINTS.playlist(playlistForEdit.id),
+        { newPlaylistName },
+      );
       return response.data;
     } catch (err) {
       return err;
