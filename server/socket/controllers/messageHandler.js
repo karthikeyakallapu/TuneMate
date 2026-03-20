@@ -36,7 +36,15 @@ export const handleMessage = async (ws, data) => {
       break;
 
     case MESSAGE_TYPES.JOIN_ROOM:
-      await RoomControllerInstance.joinRoom(payload);
+      await RoomControllerInstance.joinRoom(payload, ws.userId);
+      break;
+
+    case MESSAGE_TYPES.RESPOND_ROOM_JOIN_REQUEST:
+      await RoomControllerInstance.respondToJoinRoomRequest(payload, ws.userId);
+      break;
+
+    case MESSAGE_TYPES.KICK_ROOM_MEMBER:
+      await RoomControllerInstance.kickRoomMember(payload, ws.userId);
       break;
 
     case MESSAGE_TYPES.LEAVE_ROOM:

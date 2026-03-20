@@ -21,6 +21,7 @@ import {
   LogIn,
   Crown,
   LogOut,
+  UserX,
 } from "lucide-react";
 import { useCallback } from "react";
 
@@ -31,6 +32,7 @@ const UserSync = () => {
   const [chatMessage, setChatMessage] = useState("");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
   const [isJoiningRoom, setIsJoiningRoom] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
   const [joinRoomId, setJoinRoomId] = useState("");
   const {
     connectId,
@@ -94,12 +96,38 @@ const UserSync = () => {
           }
           break;
 
+        case "ROOM_JOIN_REQUEST_SENT":
+          setIsJoiningRoom(true);
+          break;
+
+        case "ROOM_JOIN_DECLINED":
+          setIsJoiningRoom(false);
+          Toast({
+            type: "error",
+            message:
+              data.payload?.message || "Host declined your room join request",
+          });
+          break;
+
         case "ROOM_LEFT":
           setActiveMode(null);
+          setIsJoiningRoom(false);
+          setRemovingMemberId(null);
+          break;
+
+        case "REMOVED_FROM_ROOM":
+          setActiveMode(null);
+          setIsJoiningRoom(false);
+          setRemovingMemberId(null);
+          break;
+
+        case "ROOM_MEMBER_REMOVED":
+          setRemovingMemberId(null);
           break;
 
         case "ROOM_CLOSED":
           setActiveMode(null);
+          setRemovingMemberId(null);
           Toast({
             type: "error",
             message: data.payload?.message || "Room has been closed",
@@ -113,6 +141,7 @@ const UserSync = () => {
           });
           setIsCreatingRoom(false);
           setIsJoiningRoom(false);
+          setRemovingMemberId(null);
           break;
 
         default:
@@ -272,6 +301,48 @@ const UserSync = () => {
 
     setActiveMode(null);
     setJoinRoomId("");
+  };
+
+  const handleRemoveMember = (event, member) => {
+    event.stopPropagation();
+
+    if (!isHost || !roomId || !member?.userId || member.userId === userId) {
+      return;
+    }
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      Toast({
+        type: "error",
+        message: "Unable to remove member. WebSocket is not connected.",
+      });
+      return;
+    }
+
+    const shouldRemove = window.confirm(
+      `Remove ${member.username || "this user"} from the room?`,
+    );
+    if (!shouldRemove) return;
+
+    setRemovingMemberId(member.userId);
+
+    try {
+      socket.send(
+        JSON.stringify({
+          type: "KICK_ROOM_MEMBER",
+          payload: {
+            roomId,
+            targetUserId: member.userId,
+          },
+        }),
+      );
+    } catch (error) {
+      console.error("Error removing room member:", error);
+      Toast({
+        type: "error",
+        message: "Failed to remove member from room",
+      });
+      setRemovingMemberId(null);
+    }
   };
 
   const resetToModeSelection = () => {
@@ -434,6 +505,20 @@ const UserSync = () => {
                           <Crown size={10} />
                           Host
                         </span>
+                      )}
+                      {isHost && member.userId !== userId && (
+                        <button
+                          onClick={(event) => handleRemoveMember(event, member)}
+                          disabled={removingMemberId === member.userId}
+                          className="text-red-300 hover:text-red-200 bg-red-500/10 hover:bg-red-500/20 p-1 rounded transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                          title="Remove from room"
+                        >
+                          {removingMemberId === member.userId ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <UserX size={11} />
+                          )}
+                        </button>
                       )}
                       <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
                     </div>
@@ -746,7 +831,7 @@ const UserSync = () => {
                 {isJoiningRoom ? (
                   <>
                     <Loader2 className="animate-spin" size={18} />
-                    Joining Room...
+                    Waiting for host...
                   </>
                 ) : (
                   <>

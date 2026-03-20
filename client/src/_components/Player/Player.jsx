@@ -46,6 +46,7 @@ const Player = () => {
     socket,
     setConnectionStatus,
     setUserDetails,
+    setPendingRoomJoinRequest,
     connectionStatus,
     roomId,
     setRoomId,
@@ -98,10 +99,33 @@ const Player = () => {
             showNotifier();
             break;
 
+          case "ROOM_JOIN_REQUEST":
+            setPendingRoomJoinRequest(data.payload);
+            hideUserSync();
+            showNotifier();
+            break;
+
           case "CONNECTION_DECLINED":
             Toast({
               type: "error",
               message: `${data.payload.declinedBy} declined to connect`,
+            });
+            break;
+
+          case "ROOM_JOIN_REQUEST_SENT":
+            Toast({
+              type: "info",
+              message:
+                data.payload?.message ||
+                "Join request sent. Waiting for host approval.",
+            });
+            break;
+
+          case "ROOM_JOIN_DECLINED":
+            Toast({
+              type: "error",
+              message:
+                data.payload?.message || "Host declined your room join request",
             });
             break;
 
@@ -155,10 +179,31 @@ const Player = () => {
 
           case "ROOM_LEFT":
             setRoomId(null);
+            setPendingRoomJoinRequest(null);
+            break;
+
+          case "REMOVED_FROM_ROOM":
+            setRoomId(null);
+            setPendingRoomJoinRequest(null);
+            Toast({
+              type: "error",
+              message:
+                data.payload?.message || "You were removed from the room",
+            });
+            break;
+
+          case "ROOM_MEMBER_REMOVED":
+            Toast({
+              type: "info",
+              message: data.payload?.username
+                ? `${data.payload.username} was removed from the room`
+                : "Member removed from the room",
+            });
             break;
 
           case "ROOM_CLOSED":
             setRoomId(null);
+            setPendingRoomJoinRequest(null);
             Toast({
               type: "error",
               message: data.payload?.message || "Room has been closed",
@@ -168,6 +213,7 @@ const Player = () => {
           case "ERROR":
             if (data.payload?.message === "Room not found") {
               setRoomId(null);
+              setPendingRoomJoinRequest(null);
             }
             break;
 
@@ -193,6 +239,7 @@ const Player = () => {
     },
     [
       setUserDetails,
+      setPendingRoomJoinRequest,
       setRoomId,
       hideUserSync,
       showNotifier,
