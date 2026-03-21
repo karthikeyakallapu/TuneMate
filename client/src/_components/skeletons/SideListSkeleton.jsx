@@ -1,25 +1,48 @@
 import Skeleton from "react-loading-skeleton";
 import 'react-loading-skeleton/dist/skeleton.css';
 
-const SideListSkeleton = ({count}) => {
-
-    return (<div className="flex flex-col">
-        {[...Array(count)].map((_, i) => (
-
-            <div key={i} className={"flex items-center cursor-pointer  mb-2  rounded overflow-hidden "}>
-                <div className={"flex-[0.2] flex items-center justify-center ml-2"}>
-                    <Skeleton height={52} width={52}/>
-                </div>
-                <div className={"flex-[0.8]   ml-2 mr-2"}>
-                    <div>
-                        <Skeleton height={25}/>
-                    </div>
-                    <div>
-                        <Skeleton height={25}/>
-                    </div>
-                </div>
-            </div>))}
-    </div>);
+const SideListSkeleton = ({ count = 8 }) => {
+  return (
+    <div className="flex flex-col space-y-3 px-2">
+      {[...Array(count)].map((_, i) => (
+        <div 
+          key={i} 
+          className="flex items-center gap-3 p-2 rounded-lg transition-all duration-200"
+        >
+          {/* Image Skeleton */}
+          <div className="flex-shrink-0">
+            <Skeleton 
+              height={48} 
+              width={48} 
+              className="rounded-lg"
+              baseColor="#1f1f23"
+              highlightColor="#2a2a2e"
+            />
+          </div>
+          
+          {/* Text Skeleton */}
+          <div className="flex-1 min-w-0">
+            <div className="mb-1">
+              <Skeleton 
+                height={18} 
+                width="85%" 
+                baseColor="#1f1f23"
+                highlightColor="#2a2a2e"
+              />
+            </div>
+            <div>
+              <Skeleton 
+                height={14} 
+                width="60%" 
+                baseColor="#1f1f23"
+                highlightColor="#2a2a2e"
+              />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export default SideListSkeleton;

@@ -20,5 +20,6 @@ export const ENDPOINTS = {
   addSongToRecommended: "api/tunemate/recommended/add",
   removeSongFromRecommended: "api/tunemate/recommended/remove",
   playlist: (id) => `api/playlists/user/playlist/${id}`,
-  recommendedPlaylist: (id) => `api/tunemate/recommended/${id}`
+  recommendedPlaylist: (id) => `api/tunemate/recommended/${id}`,
+  createRoom: `api/connect/room`,
 };
