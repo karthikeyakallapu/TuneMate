@@ -26,7 +26,6 @@ const EditPlayList = () => {
       if (response.data) {
         Toast({ type: response.data.type, message: response.data.message });
         resetData();
-        // Use global mutate to update the sidebar playlists
         await globalMutate("user-playlists");
         await globalMutate(["user-playlist", playlistForEdit.id]);
         closeModal();
@@ -42,21 +41,24 @@ const EditPlayList = () => {
   return (
     <Modal>
       <div className="p-4 w-96">
-        <h2 className="text-xl">Edit Playlist </h2>
-        <form className="flex flex-col gap-4 mt-4" onSubmit={handleEdit}>
+        <h2 className="text-xl text-white mb-4">Edit Playlist</h2>
+        <form className="flex flex-col gap-4" onSubmit={handleEdit}>
           <input
             type="text"
             placeholder="Playlist Name"
             name="newPlaylistName"
             onChange={handleChange}
             defaultValue={playlistForEdit?.name}
-            className="p-2 border border-gray-300 rounded text-black outline-none text-md font-sans"
+            className="p-2 border border-gray-700 rounded-lg text-white bg-[#1e1e1e] outline-none focus:border-cyan-500"
+            required
           />
-          <input
+          <button
             type="submit"
-            value={"Save"}
-            className="bg-[#59c2ef] p-1 rounded cursor-pointer text-md font-semibold"
-          />
+            disabled={isLoading}
+            className="bg-gradient-to-r from-cyan-500 to-blue-500 p-2 rounded-lg cursor-pointer text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            {isLoading ? "Saving..." : "Save"}
+          </button>
         </form>
       </div>
     </Modal>

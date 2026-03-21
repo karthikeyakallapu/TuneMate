@@ -1,0 +1,29 @@
+config:
+  target: "ws://localhost:4100"
+  phases:
+    - name: "warmup-room-sync"
+      duration: 60
+      arrivalRate: 5
+      rampTo: 30
+    - name: "sustain-room-sync"
+      duration: 240
+      arrivalRate: 30
+  engines:
+    ws: {}
+  processor: "./processor.cjs"
+
+scenarios:
+  - name: "room-sync-traffic"
+    engine: ws
+    flow:
+      - function: "initRoomUser"
+      - connect:
+          url: "{{ wsPath }}"
+      - think: 1
+      - loop:
+          - function: "buildRoomSyncMessage"
+          - send:
+              payload: "{{ roomSyncMessage }}"
+          - think: 1
+        count: 120
+

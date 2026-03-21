@@ -19,6 +19,8 @@ class PlayerError extends Error {
   }
 }
 
+const isAutoplayBlockedError = (error) => error?.name === "NotAllowedError";
+
 const usePlayerStore = create(
   persist(
     (set, get) => ({
@@ -297,7 +299,7 @@ const usePlayerStore = create(
         }
       },
 
-      handleAudioPlay: debounce(async (shouldBroadcast = true) => {
+      handleAudioPlay: debounce(async (shouldBroadcast = true, shouldToggle = true) => {
         const audio = get().AudioRef.current;
         if (!audio) return;
 
@@ -305,11 +307,24 @@ const usePlayerStore = create(
         audio.onended = async () => {
           if (get().onLoop) {
             audio.currentTime = 0;
-            await audio.play();
+            try {
+              await audio.play();
+              set({ isPlaying: true });
+            } catch (error) {
+              if (!isAutoplayBlockedError(error)) {
+                console.error("Error resuming loop playback:", error);
+              }
+              set({ isPlaying: false });
+            }
           } else {
             await get().playNext();
           }
         };
+
+        if (!shouldToggle) {
+          set({ isPlaying: !audio.paused });
+          return;
+        }
 
         try {
           // Play/pause toggle
@@ -317,7 +332,7 @@ const usePlayerStore = create(
             await audio.play();
             set({ isPlaying: true });
           } else {
-            await audio.pause();
+            audio.pause();
             set({ isPlaying: false });
           }
 
@@ -329,6 +344,10 @@ const usePlayerStore = create(
             });
           }
         } catch (error) {
+          if (isAutoplayBlockedError(error)) {
+            set({ isPlaying: false });
+            return;
+          }
           console.error("Error in handleAudioPlay:", error);
         }
       }, 300),

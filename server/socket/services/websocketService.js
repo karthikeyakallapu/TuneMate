@@ -3,8 +3,11 @@ import { addConnection, removeConnection } from "./userConnections.js";
 import { handleMessage } from "../controllers/messageHandler.js";
 import { removeSocketFromAllRooms } from "../utils/roomUtils.js";
 import RoomControllerInstance from "../controllers/RoomController.js";
+import { initializePubSubBridge } from "./pubSubBridge.js";
 
-export const startWebSocketServer = (server) => {
+export const startWebSocketServer = async (server) => {
+  await initializePubSubBridge();
+
   const wss = new WebSocketServer({ server });
 
   wss.on("connection", async (ws, req) => {

@@ -46,7 +46,6 @@ const Artist = () => {
     songId,
   } = usePlayerStore();
   const { hoveredItemId, handleMouseEnter, handleMouseLeave } = useHover();
-  const [isLiked, setIsLiked] = useState(false);
 
   const {
     data: artist,
@@ -60,29 +59,6 @@ const Artist = () => {
     await loadPlaylist({ id, type: "ARTIST", index: 0 });
   };
 
-  const handleShufflePlay = async () => {
-    if (artist?.topSongs?.length) {
-      const randomIndex = Math.floor(Math.random() * artist.topSongs.length);
-      await loadPlaylist({ id, type: "ARTIST", index: randomIndex });
-    }
-  };
-
-  const handleLikeArtist = () => {
-    setIsLiked(!isLiked);
-  };
-
-  const handleShareArtist = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: artist?.name,
-        text: `Check out ${artist?.name} on Tunemate`,
-        url: window.location.href,
-      });
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-    }
-  };
-
   const formatFollowerCount = (count) => {
     if (!count) return "0";
     if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
@@ -94,8 +70,8 @@ const Artist = () => {
     return (
       <Wrapper>
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507]">
-          <div className="max-w-7xl mx-auto px-4 py-8">
-            <UserPlayListSkeleton count={10} />
+          <div className="px-4 py-8">
+            <UserPlayListSkeleton count={8} />
           </div>
         </div>
       </Wrapper>
@@ -105,7 +81,7 @@ const Artist = () => {
   if (error || !artist) {
     return (
       <Wrapper>
-        <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507] flex items-center justify-center">
+        <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507] flex items-center justify-center px-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -126,21 +102,23 @@ const Artist = () => {
 
   return (
     <Wrapper>
-      <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507]">
+      <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507] pb-20">
         {/* Hero Section */}
         <div className="relative overflow-hidden">
           {/* Animated Gradient Background */}
           <div className="absolute inset-0 bg-gradient-to-b from-pink-500/30 via-purple-500/20 to-transparent" />
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-pink-500/20 via-transparent to-transparent" />
 
-          {/* Floating Particles */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute top-20 left-20 w-64 h-64 bg-pink-500 rounded-full filter blur-3xl opacity-20 animate-pulse" />
-            <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full filter blur-3xl opacity-20 animate-pulse delay-1000" />
-          </div>
+          {/* Floating Particles - Hidden on mobile for performance */}
+          {!isMobile && (
+            <div className="absolute inset-0 overflow-hidden">
+              <div className="absolute top-20 left-20 w-64 h-64 bg-pink-500 rounded-full filter blur-3xl opacity-20 animate-pulse" />
+              <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full filter blur-3xl opacity-20 animate-pulse delay-1000" />
+            </div>
+          )}
 
-          <div className="relative max-w-7xl mx-auto px-4 py-12 md:py-20">
-            <div className="flex flex-col md:flex-row md:items-end gap-6 md:gap-8">
+          <div className="relative max-w-7xl mx-auto px-4 py-8 md:py-20">
+            <div className="flex flex-col md:flex-row md:items-end items-center gap-6 md:gap-8">
               {/* Artist Image with Glow */}
               <motion.div
                 initial={{ scale: 0.9, opacity: 0 }}
@@ -152,14 +130,17 @@ const Artist = () => {
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-500 to-purple-500 rounded-full blur-2xl opacity-0 group-hover:opacity-70 transition-opacity duration-300" />
                   {artist.image ? (
                     <LazyLoadImage
-                      src={artist?.image[1]?.url || artist?.image[0]?.url}
+                      src={artist?.image?.[1]?.url || artist?.image?.[0]?.url}
                       alt={artist?.name}
                       effect="blur"
-                      className="relative rounded-full w-40 h-40 md:w-56 md:h-56 object-cover shadow-2xl border-4 border-white/20"
+                      className="relative rounded-full w-32 h-32 md:w-56 md:h-56 object-cover shadow-2xl border-4 border-white/20"
                     />
                   ) : (
-                    <div className="relative w-40 h-40 md:w-56 md:h-56 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
-                      <BiSolidPlaylist size={80} color="white" />
+                    <div className="relative w-32 h-32 md:w-56 md:h-56 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center shadow-2xl">
+                      <BiSolidPlaylist
+                        size={isMobile ? 50 : 80}
+                        color="white"
+                      />
                     </div>
                   )}
                 </div>
@@ -172,9 +153,9 @@ const Artist = () => {
                 transition={{ delay: 0.1 }}
                 className="flex-1 text-center md:text-left"
               >
-                <div className="flex items-center justify-center md:justify-start gap-3 mb-3 flex-wrap">
-                  <h1 className="jaro-head text-4xl md:text-6xl lg:text-7xl text-white">
-                    {truncateString(artist?.name, 30)}
+                <div className="flex items-center justify-center md:justify-start gap-2 md:gap-3 mb-2 md:mb-3 flex-wrap">
+                  <h1 className="jaro-head text-2xl md:text-6xl lg:text-7xl text-white">
+                    {truncateString(artist?.name, isMobile ? 20 : 30)}
                   </h1>
                   {artist?.isVerified && (
                     <motion.div
@@ -184,7 +165,7 @@ const Artist = () => {
                       className="relative"
                     >
                       <MdVerifiedUser
-                        size={isMobile ? 28 : 36}
+                        size={isMobile ? 20 : 36}
                         className="text-cyan-400"
                       />
                       <div className="absolute inset-0 blur-md bg-cyan-400/30 rounded-full" />
@@ -192,73 +173,52 @@ const Artist = () => {
                   )}
                 </div>
 
-                <div className="flex items-center justify-center md:justify-start gap-4 mb-4">
-                  <div className="flex items-center gap-2">
-                    <FiUsers className="text-gray-400" size={16} />
-                    <span className="text-gray-300 font-semibold">
+                <div className="flex items-center justify-center md:justify-start gap-3 md:gap-4 mb-3 md:mb-4">
+                  <div className="flex items-center gap-1 md:gap-2">
+                    <FiUsers
+                      size={isMobile ? 12 : 16}
+                      className="text-gray-400"
+                    />
+                    <span className="text-xs md:text-sm text-gray-300 font-semibold">
                       {formatFollowerCount(artist?.followerCount)} Followers
                     </span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <FiHeadphones className="text-gray-400" size={16} />
-                    <span className="text-gray-300">
+                  <div className="flex items-center gap-1 md:gap-2">
+                    <FiHeadphones
+                      size={isMobile ? 12 : 16}
+                      className="text-gray-400"
+                    />
+                    <span className="text-xs md:text-sm text-gray-300">
                       {artist?.topSongs?.length || 0} Songs
                     </span>
                   </div>
                 </div>
+
+                {/* Artist Bio - Optional */}
+                {artist?.bio && !isMobile && (
+                  <p className="text-gray-400 text-sm max-w-2xl mx-auto md:mx-0">
+                    {truncateString(artist.bio, 150)}
+                  </p>
+                )}
               </motion.div>
             </div>
 
-            {/* Action Buttons */}
+            {/* Action Buttons - Responsive */}
             <motion.div
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.2 }}
-              className="flex items-center justify-center md:justify-start gap-3 mt-8 flex-wrap"
+              className="flex items-center justify-center md:justify-start gap-2 md:gap-3 mt-6 md:mt-8 flex-wrap"
             >
               {/* Play Button */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handlePlayWholeList}
-                className="px-8 py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-full text-white font-semibold flex items-center gap-2 shadow-lg hover:shadow-pink-500/25 transition-all duration-300"
+                className="px-5 md:px-8 py-2.5 md:py-3 bg-gradient-to-r from-pink-500 to-purple-500 rounded-full text-white font-semibold flex items-center gap-2 shadow-lg hover:shadow-pink-500/25 transition-all duration-300 text-sm md:text-base"
               >
-                <FaPlay size={14} className="ml-0.5" />
+                <FaPlay size={isMobile ? 12 : 14} className="ml-0.5" />
                 <span>Play All</span>
-              </motion.button>
-
-              {/* Shuffle Button */}
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleShufflePlay}
-                className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-              >
-                <FiShuffle size={16} className="text-gray-400" />
-              </motion.button>
-
-              {/* Like Button */}
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleLikeArtist}
-                className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-              >
-                {isLiked ? (
-                  <FaHeart size={18} className="text-pink-500" />
-                ) : (
-                  <FaRegHeart size={18} className="text-gray-400" />
-                )}
-              </motion.button>
-
-              {/* Share Button */}
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={handleShareArtist}
-                className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-              >
-                <FaShare size={16} className="text-gray-400" />
               </motion.button>
             </motion.div>
           </div>
@@ -266,10 +226,10 @@ const Artist = () => {
 
         {/* Songs Section */}
         <BlockWrapper margin={"mb-20 md:mb-8"}>
-          <div className="max-w-7xl mx-auto px-4 py-8">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="w-1 h-8 bg-gradient-to-b from-pink-500 to-purple-500 rounded-full" />
-              <h2 className="jaro-head text-2xl md:text-3xl text-white">
+          <div className="max-w-7xl mx-auto px-4 py-6 md:py-8">
+            <div className="flex items-center gap-2 mb-4 md:mb-6">
+              <div className="w-1 h-6 md:h-8 bg-gradient-to-b from-pink-500 to-purple-500 rounded-full" />
+              <h2 className="jaro-head text-xl md:text-2xl lg:text-3xl text-white">
                 Popular Songs
               </h2>
             </div>
@@ -279,7 +239,7 @@ const Artist = () => {
               <div className="absolute inset-0 bg-gradient-to-r from-pink-500/5 to-purple-500/5" />
 
               <div className="relative">
-                {/* Header */}
+                {/* Header - Hidden on mobile */}
                 <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-medium text-gray-400 uppercase tracking-wider border-b border-white/10">
                   <div className="col-span-1 text-center">#</div>
                   <div className="col-span-6">Title</div>
@@ -302,7 +262,7 @@ const Artist = () => {
                         onMouseEnter={() => handleMouseEnter(song.id)}
                         onMouseLeave={handleMouseLeave}
                         className={cn(
-                          "group grid grid-cols-1 md:grid-cols-12 gap-4 items-center px-4 md:px-6 py-3 cursor-pointer transition-all duration-200",
+                          "group cursor-pointer transition-all duration-200",
                           isCurrentSong
                             ? "bg-gradient-to-r from-pink-500/10 to-purple-500/10"
                             : "hover:bg-white/5",
@@ -313,68 +273,136 @@ const Artist = () => {
                             : playSong(song.id)
                         }
                       >
-                        {/* Index / Play Icon */}
-                        <div className="col-span-1 flex justify-center items-center">
-                          {hoveredItemId === song.id || isCurrentSong ? (
-                            <motion.div
-                              initial={{ scale: 0 }}
-                              animate={{ scale: 1 }}
-                              className="text-pink-400"
-                            >
-                              {isSongPlaying ? (
-                                <FaPause size={14} />
-                              ) : (
-                                <FaPlay size={12} className="ml-0.5" />
+                        {/* Desktop Layout */}
+                        <div className="hidden md:grid grid-cols-12 gap-4 items-center px-6 py-3">
+                          {/* Index / Play Icon */}
+                          <div className="col-span-1 flex justify-center items-center">
+                            {hoveredItemId === song.id || isCurrentSong ? (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="text-pink-400"
+                              >
+                                {isSongPlaying ? (
+                                  <FaPause size={14} />
+                                ) : (
+                                  <FaPlay size={12} className="ml-0.5" />
+                                )}
+                              </motion.div>
+                            ) : (
+                              <span
+                                className={cn(
+                                  "text-sm font-mono",
+                                  isCurrentSong
+                                    ? "text-pink-400"
+                                    : "text-gray-500",
+                                )}
+                              >
+                                {index + 1}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Song Info */}
+                          <div className="col-span-6 flex items-center gap-3">
+                            <LazyLoadImage
+                              src={song.image?.[1]?.url || song.image?.[0]?.url}
+                              alt={song.name}
+                              effect="blur"
+                              className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <h3
+                                className={cn(
+                                  "font-medium truncate",
+                                  isCurrentSong
+                                    ? "text-pink-400"
+                                    : "text-white",
+                                )}
+                              >
+                                {decodeHtmlEntities(song?.name)}
+                              </h3>
+                            </div>
+                          </div>
+
+                          {/* Album Name */}
+                          <div className="col-span-4">
+                            <p className="text-sm text-gray-400 truncate">
+                              {decodeHtmlEntities(
+                                song?.album?.name || song?.album || "Single",
                               )}
-                            </motion.div>
-                          ) : (
-                            <span
-                              className={cn(
-                                "text-sm font-mono",
-                                isCurrentSong
-                                  ? "text-pink-400"
-                                  : "text-gray-500",
-                              )}
-                            >
-                              {index + 1}
-                            </span>
-                          )}
+                            </p>
+                          </div>
+
+                          {/* Duration */}
+                          <div className="col-span-1 text-right">
+                            <p className="text-sm text-gray-400">
+                              {formatTime(song.duration)}
+                            </p>
+                          </div>
                         </div>
 
-                        {/* Song Info */}
-                        <div className="col-span-1 md:col-span-6 flex items-center gap-3">
+                        {/* Mobile Layout */}
+                        <div className="md:hidden flex items-center gap-3 px-4 py-3">
+                          {/* Index / Play Icon */}
+                          <div className="w-8 flex justify-center">
+                            {hoveredItemId === song.id || isCurrentSong ? (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="text-pink-400"
+                              >
+                                {isSongPlaying ? (
+                                  <FaPause size={12} />
+                                ) : (
+                                  <FaPlay size={10} className="ml-0.5" />
+                                )}
+                              </motion.div>
+                            ) : (
+                              <span
+                                className={cn(
+                                  "text-xs font-mono",
+                                  isCurrentSong
+                                    ? "text-pink-400"
+                                    : "text-gray-500",
+                                )}
+                              >
+                                {index + 1}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Album Art */}
                           <LazyLoadImage
-                            src={song.image[1]?.url || song.image[0]?.url}
+                            src={song.image?.[1]?.url || song.image?.[0]?.url}
                             alt={song.name}
                             effect="blur"
                             className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                           />
+
+                          {/* Song Info */}
                           <div className="flex-1 min-w-0">
                             <h3
                               className={cn(
-                                "font-medium truncate",
+                                "font-medium text-sm truncate",
                                 isCurrentSong ? "text-pink-400" : "text-white",
                               )}
                             >
                               {decodeHtmlEntities(song?.name)}
                             </h3>
+                            <p className="text-xs text-gray-400 truncate mt-0.5">
+                              {decodeHtmlEntities(
+                                song?.album?.name || song?.album || "Single",
+                              )}
+                            </p>
                           </div>
-                        </div>
 
-                        {/* Album Name */}
-                        <div className="hidden md:block col-span-4">
-                          <p className="text-sm text-gray-400 truncate">
-                            {decodeHtmlEntities(
-                              song?.album?.name || song?.album || "Single",
-                            )}
-                          </p>
-                        </div>
-
-                        {/* Duration */}
-                        <div className="hidden md:block col-span-1 text-right">
-                          <p className="text-sm text-gray-400">
-                            {formatTime(song.duration)}
-                          </p>
+                          {/* Duration */}
+                          <div className="flex-shrink-0">
+                            <p className="text-xs text-gray-500">
+                              {formatTime(song.duration)}
+                            </p>
+                          </div>
                         </div>
                       </motion.div>
                     );
@@ -388,15 +416,18 @@ const Artist = () => {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="flex flex-col items-center justify-center py-20 text-center"
+                className="flex flex-col items-center justify-center py-16 md:py-20 text-center"
               >
-                <div className="w-20 h-20 rounded-full bg-gradient-to-r from-pink-500/20 to-purple-500/20 flex items-center justify-center mb-4">
-                  <FiHeadphones size={32} className="text-pink-400" />
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-r from-pink-500/20 to-purple-500/20 flex items-center justify-center mb-3 md:mb-4">
+                  <FiHeadphones
+                    size={isMobile ? 24 : 32}
+                    className="text-pink-400"
+                  />
                 </div>
-                <h3 className="jaro-head text-xl text-white mb-2">
+                <h3 className="jaro-head text-lg md:text-xl text-white mb-2">
                   No songs available
                 </h3>
-                <p className="text-gray-400">
+                <p className="text-gray-400 text-sm">
                   This artist hasn't released any songs yet.
                 </p>
               </motion.div>

@@ -1,0 +1,23 @@
+config:
+  target: "ws://localhost:4100"
+  phases:
+    - name: "warmup-idle"
+      duration: 60
+      arrivalRate: 10
+      rampTo: 50
+    - name: "sustain-idle"
+      duration: 180
+      arrivalRate: 50
+  engines:
+    ws: {}
+  processor: "./processor.cjs"
+
+scenarios:
+  - name: "idle-websocket-connections"
+    engine: ws
+    flow:
+      - function: "initIdleUser"
+      - connect:
+          url: "{{ wsPath }}"
+      - think: 300
+

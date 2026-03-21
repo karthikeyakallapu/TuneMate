@@ -9,16 +9,16 @@ import {
   formatRelativeTime,
   formatTime,
   truncateString,
-  formatPlayCount
+  formatPlayCount,
 } from "@/utils/MusicUtils.js";
 import { IoMdRemoveCircle, IoMdAddCircle } from "react-icons/io";
-import { 
-  FiPlay, 
-  FiPause, 
-  FiMoreVertical, 
+import {
+  FiPlay,
+  FiPause,
+  FiMoreVertical,
   FiShuffle,
   FiHeart,
-  FiShare2
+  FiShare2,
 } from "react-icons/fi";
 import { FaPlay, FaPause, FaHeart, FaRegHeart } from "react-icons/fa";
 import { BiSolidPlaylist, BiPlay, BiPause } from "react-icons/bi";
@@ -33,7 +33,7 @@ import { useMediaQuery } from "usehooks-ts";
 import { LazyLoadImage } from "react-lazy-load-image-component";
 import useDropDownStore from "@/store/use-dropDownStore";
 import UserPlayListModifyOptions from "@/_components/Options/UserPlayListModifyOptions";
-import AddToPlaylist from "@/_components/Options/AddToPlaylist.jsx"; // ADD THIS IMPORT
+import AddToPlaylist from "@/_components/Options/AddToPlaylist.jsx";
 import { cn } from "@/lib/utils";
 
 const UserPlaylists = () => {
@@ -48,7 +48,7 @@ const UserPlaylists = () => {
     setSongForPlayListDropdown,
     isPlaying,
     songId,
-    AudioRef
+    AudioRef,
   } = usePlayerStore();
   const { isAddToPlaylistVisible, showAddToPlaylist, component } =
     useAddListStore();
@@ -57,18 +57,17 @@ const UserPlaylists = () => {
   const [clickEvent, setClickEvent] = useState(null);
   const { hoveredItemId, handleMouseEnter, handleMouseLeave } = useHover();
   const [isScrolled, setIsScrolled] = useState(false);
-  const [isLiked, setIsLiked] = useState(false);
   const location = useLocation();
   const isRecommended = location.pathname.startsWith("/recommended");
   const isMobile = useMediaQuery("(max-width: 767px)");
   const { showDropDown, components, hideDropDown } = useDropDownStore();
-  const wrapperRef = useRef(null);
+  const optionsContainerRef = useRef(null);
 
   const {
     data: single_playlist,
     error,
     isLoading,
-    mutate
+    mutate,
   } = useSWR(
     id
       ? isRecommended
@@ -78,7 +77,7 @@ const UserPlaylists = () => {
     () =>
       isRecommended
         ? tuneMateInstance.getRecommendedPlaylist(id)
-        : tuneMateInstance.getUserPlaylist(id)
+        : tuneMateInstance.getUserPlaylist(id),
   );
 
   useEffect(() => {
@@ -89,13 +88,13 @@ const UserPlaylists = () => {
     const handleClickOutside = (event) => {
       if (
         components["USER_PLAYLIST_OPTIONS"] &&
-        wrapperRef.current &&
-        !wrapperRef.current.contains(event.target)
+        optionsContainerRef.current &&
+        !optionsContainerRef.current.contains(event.target)
       ) {
         hideDropDown("USER_PLAYLIST_OPTIONS");
       }
     };
-    
+
     window.addEventListener("scroll", handleScroll);
     window.addEventListener("mousedown", handleClickOutside);
 
@@ -105,7 +104,6 @@ const UserPlaylists = () => {
     };
   }, [components, hideDropDown]);
 
-  // Handle audio play with user interaction check
   const handleSafeAudioPlay = async () => {
     try {
       if (AudioRef.current) {
@@ -113,7 +111,6 @@ const UserPlaylists = () => {
       }
     } catch (error) {
       console.warn("Audio play requires user interaction:", error);
-      // Show a toast or tooltip indicating user needs to interact first
     }
   };
 
@@ -127,8 +124,12 @@ const UserPlaylists = () => {
             className="text-center"
           >
             <div className="text-6xl mb-4">😢</div>
-            <h2 className="text-2xl font-bold text-white mb-2">Failed to Load</h2>
-            <p className="text-gray-400">Couldn't load the playlist. Please try again.</p>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Failed to Load
+            </h2>
+            <p className="text-gray-400">
+              Couldn't load the playlist. Please try again.
+            </p>
             <button
               onClick={() => navigate(-1)}
               className="mt-4 px-6 py-2 bg-white/10 rounded-full hover:bg-white/20 transition-colors"
@@ -147,21 +148,8 @@ const UserPlaylists = () => {
       type: location.pathname.startsWith("/recommended")
         ? "RECOMMENDED_PLAYLIST"
         : "USER_PLAYLIST",
-      index: 0
+      index: 0,
     });
-  };
-
-  const handleShufflePlay = async () => {
-    if (single_playlist?.songs?.length) {
-      const randomIndex = Math.floor(Math.random() * single_playlist.songs.length);
-      await loadPlaylist({
-        id: id,
-        type: location.pathname.startsWith("/recommended")
-          ? "RECOMMENDED_PLAYLIST"
-          : "USER_PLAYLIST",
-        index: randomIndex
-      });
-    }
   };
 
   const handleShowLists = (e, song) => {
@@ -173,32 +161,27 @@ const UserPlaylists = () => {
     showAddToPlaylist(song.id, "USER_LIST");
   };
 
-  const handleLikePlaylist = async () => {
-    setIsLiked(!isLiked);
-    // API call to like/unlike playlist
+  const toggleOptionsMenu = () => {
+    if (components["USER_PLAYLIST_OPTIONS"]) {
+      hideDropDown("USER_PLAYLIST_OPTIONS");
+    } else {
+      showDropDown("USER_PLAYLIST_OPTIONS");
+    }
   };
 
-  const handleSharePlaylist = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: single_playlist?.name,
-        text: `Check out this playlist: ${single_playlist?.name}`,
-        url: window.location.href,
-      });
-    } else {
-      navigator.clipboard.writeText(window.location.href);
-    }
+  const closeOptionsMenu = () => {
+    hideDropDown("USER_PLAYLIST_OPTIONS");
   };
 
   const renderPlaylistDetails = () => (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="relative overflow-hidden"
+      className="relative overflow-visible"
     >
       {/* Background Gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-cyan-500/10 via-purple-500/5 to-transparent pointer-events-none" />
-      
+
       <div className="relative px-4 py-8 md:py-12">
         <div className="flex flex-col md:flex-row md:items-end gap-6 md:gap-8">
           {/* Playlist Image */}
@@ -222,7 +205,7 @@ const UserPlaylists = () => {
                   <BiSolidPlaylist size={80} color="white" />
                 </div>
               )}
-              
+
               {/* Overlay Gradient */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
             </div>
@@ -240,24 +223,25 @@ const UserPlaylists = () => {
                 {isRecommended ? "Recommended" : "Your Playlist"}
               </span>
             </div>
-            
+
             <h1 className="text-3xl md:text-6xl lg:text-7xl font-bold text-white mb-4 leading-tight">
               {truncateString(single_playlist?.name, 30)}
             </h1>
-            
+
             {single_playlist?.description && (
               <p className="text-gray-400 text-sm md:text-base mb-3 max-w-2xl">
                 {single_playlist.description}
               </p>
             )}
-            
+
             <div className="flex items-center gap-4 text-sm text-gray-400">
               <span className="font-medium text-white">
                 {single_playlist?.owner?.username || "Unknown Artist"}
               </span>
               <span>•</span>
               <span>
-                {single_playlist?.songs?.length || 0} {single_playlist?.songs?.length === 1 ? "song" : "songs"}
+                {single_playlist?.songs?.length || 0}{" "}
+                {single_playlist?.songs?.length === 1 ? "song" : "songs"}
               </span>
             </div>
           </motion.div>
@@ -281,59 +265,26 @@ const UserPlaylists = () => {
             <span>Play All</span>
           </motion.button>
 
-          {/* Shuffle Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleShufflePlay}
-            className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-          >
-            <FiShuffle size={16} className="text-gray-400" />
-          </motion.button>
-
-          {/* Like Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleLikePlaylist}
-            className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-          >
-            {isLiked ? (
-              <FaHeart size={18} className="text-pink-500" />
-            ) : (
-              <FaRegHeart size={18} className="text-gray-400" />
-            )}
-          </motion.button>
-
-          {/* Share Button */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={handleSharePlaylist}
-            className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
-          >
-            <FiShare2 size={16} className="text-gray-400" />
-          </motion.button>
-
-          {/* Options Button */}
+          {/* Options Button  */}
           {!isRecommended && (
-            <div className="relative" ref={wrapperRef}>
+            <div ref={optionsContainerRef} className="relative z-40">
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  components["USER_PLAYLIST_OPTIONS"]
-                    ? hideDropDown("USER_PLAYLIST_OPTIONS")
-                    : showDropDown("USER_PLAYLIST_OPTIONS");
-                }}
+                onClick={toggleOptionsMenu}
                 className="p-3 rounded-full bg-white/5 hover:bg-white/10 transition-colors border border-white/10"
               >
                 <FiMoreVertical size={16} className="text-gray-400" />
               </motion.button>
-              
+
               <AnimatePresence>
                 {components["USER_PLAYLIST_OPTIONS"] && (
-                  <UserPlayListModifyOptions single_playlist={single_playlist} />
+                  <div className="absolute top-full left-0 mt-2 z-50">
+                    <UserPlayListModifyOptions
+                      single_playlist={single_playlist}
+                      onClose={closeOptionsMenu}
+                    />
+                  </div>
                 )}
               </AnimatePresence>
             </div>
@@ -363,7 +314,7 @@ const UserPlaylists = () => {
               >
                 <FaPlay size={12} className="ml-0.5 text-white" />
               </motion.button>
-              
+
               <div className="flex items-center ml-4">
                 {single_playlist?.image ? (
                   <LazyLoadImage
@@ -391,13 +342,19 @@ const UserPlaylists = () => {
         {/* Song List Header */}
         <div className="grid grid-cols-10 gap-4 px-4 py-3 rounded-xl bg-white/5 backdrop-blur-sm sticky top-[138px] left-0 z-30 mb-2 border border-white/10">
           <div className="col-span-1 flex justify-center items-center">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">#</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              #
+            </span>
           </div>
           <div className="col-span-3 flex items-center">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Title</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Title
+            </span>
           </div>
           <div className="hidden md:flex col-span-2 justify-center items-center">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Album</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Album
+            </span>
           </div>
           <div className="col-span-2 hidden md:flex justify-center items-center">
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -407,7 +364,9 @@ const UserPlaylists = () => {
           <div className="col-span-1 hidden md:flex justify-center items-center"></div>
           <div className="col-span-1 hidden md:flex justify-center items-center gap-1">
             <HiOutlineClock size={12} className="text-gray-400" />
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Duration</span>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Duration
+            </span>
           </div>
         </div>
 
@@ -417,7 +376,7 @@ const UserPlaylists = () => {
             single_playlist.songs.map((song, index) => {
               const isCurrentSong = songId === song.id;
               const isSongPlaying = isCurrentSong && isPlaying;
-              
+
               return (
                 <motion.div
                   key={song.id}
@@ -430,10 +389,11 @@ const UserPlaylists = () => {
                     "group grid grid-cols-10 gap-4 m-1 p-3 rounded-xl cursor-pointer transition-all duration-200",
                     isCurrentSong
                       ? "bg-gradient-to-r from-cyan-500/10 to-blue-500/10 border border-cyan-500/20"
-                      : "hover:bg-white/5"
+                      : "hover:bg-white/5",
                   )}
                   onClick={() =>
-                    playlist.songs.length > 0 && playlist.id === single_playlist.id
+                    playlist.songs.length > 0 &&
+                    playlist.id === single_playlist.id
                       ? playSongByIndex(index)
                       : playSong(song.id)
                   }
@@ -453,10 +413,12 @@ const UserPlaylists = () => {
                         )}
                       </motion.div>
                     ) : (
-                      <span className={cn(
-                        "text-sm font-mono",
-                        isCurrentSong ? "text-cyan-400" : "text-gray-500"
-                      )}>
+                      <span
+                        className={cn(
+                          "text-sm font-mono",
+                          isCurrentSong ? "text-cyan-400" : "text-gray-500",
+                        )}
+                      >
                         {index + 1}
                       </span>
                     )}
@@ -471,12 +433,14 @@ const UserPlaylists = () => {
                       alt={song.name}
                       className="w-10 h-10 rounded-lg object-cover flex-shrink-0"
                     />
-                    
+
                     <div className="flex-1 min-w-0">
-                      <h3 className={cn(
-                        "font-medium truncate",
-                        isCurrentSong ? "text-cyan-400" : "text-white"
-                      )}>
+                      <h3
+                        className={cn(
+                          "font-medium truncate",
+                          isCurrentSong ? "text-cyan-400" : "text-white",
+                        )}
+                      >
                         {decodeHtmlEntities(song.name)}
                       </h3>
                       <p className="text-xs text-gray-400 truncate">
@@ -487,20 +451,24 @@ const UserPlaylists = () => {
 
                   {/* Album Name */}
                   <div className="col-span-2 hidden md:flex justify-center items-center">
-                    <p className={cn(
-                      "text-sm truncate",
-                      isCurrentSong ? "text-cyan-400" : "text-gray-300"
-                    )}>
+                    <p
+                      className={cn(
+                        "text-sm truncate",
+                        isCurrentSong ? "text-cyan-400" : "text-gray-300",
+                      )}
+                    >
                       {truncateString(decodeHtmlEntities(song.album), 20)}
                     </p>
                   </div>
 
                   {/* Plays/Date */}
                   <div className="col-span-2 hidden md:flex justify-center items-center">
-                    <p className={cn(
-                      "text-sm",
-                      isCurrentSong ? "text-cyan-400" : "text-gray-400"
-                    )}>
+                    <p
+                      className={cn(
+                        "text-sm",
+                        isCurrentSong ? "text-cyan-400" : "text-gray-400",
+                      )}
+                    >
                       {isRecommended
                         ? formatPlayCount(song.playCount)
                         : formatRelativeTime(song.addedAt)}
@@ -517,7 +485,7 @@ const UserPlaylists = () => {
                         "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200",
                         hoveredItemId === song.id
                           ? "opacity-100 bg-white/10"
-                          : "opacity-0 pointer-events-none"
+                          : "opacity-0 pointer-events-none",
                       )}
                       title="Add to playlist"
                     >
@@ -527,10 +495,12 @@ const UserPlaylists = () => {
 
                   {/* Duration */}
                   <div className="col-span-1 hidden md:flex justify-center items-center">
-                    <p className={cn(
-                      "text-sm",
-                      isCurrentSong ? "text-cyan-400" : "text-gray-400"
-                    )}>
+                    <p
+                      className={cn(
+                        "text-sm",
+                        isCurrentSong ? "text-cyan-400" : "text-gray-400",
+                      )}
+                    >
                       {formatTime(song.duration)}
                     </p>
                   </div>
@@ -544,8 +514,12 @@ const UserPlaylists = () => {
               className="flex flex-col items-center justify-center min-h-64 text-center"
             >
               <div className="text-6xl mb-4">🎵</div>
-              <h3 className="text-xl font-semibold text-white mb-2">No songs yet</h3>
-              <p className="text-gray-400">This playlist is empty. Add some songs to get started!</p>
+              <h3 className="text-xl font-semibold text-white mb-2">
+                No songs yet
+              </h3>
+              <p className="text-gray-400">
+                This playlist is empty. Add some songs to get started!
+              </p>
             </motion.div>
           )}
         </AnimatePresence>
@@ -553,13 +527,15 @@ const UserPlaylists = () => {
 
       {/* Add to Playlist Modal */}
       <AnimatePresence>
-        {isAddToPlaylistVisible && selectedSongId && component === "USER_LIST" && (
-          <AddToPlaylist
-            clickEvent={clickEvent}
-            component={"USER_LIST"}
-            onPlaylistUpdate={mutate}
-          />
-        )}
+        {isAddToPlaylistVisible &&
+          selectedSongId &&
+          component === "USER_LIST" && (
+            <AddToPlaylist
+              clickEvent={clickEvent}
+              component={"USER_LIST"}
+              onPlaylistUpdate={mutate}
+            />
+          )}
       </AnimatePresence>
     </div>
   );

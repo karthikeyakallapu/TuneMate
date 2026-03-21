@@ -3,6 +3,7 @@ import { removeSocketFromAllRooms } from "../utils/roomUtils.js";
 
 // In-memory map to hold active WebSocket connections
 const wsConnections = new Map();
+const localUserToWsId = new Map();
 
 // Add a user connection (store userId -> wsId mapping in Redis)
 export const addConnection = async (userId, ws) => {
@@ -12,6 +13,9 @@ export const addConnection = async (userId, ws) => {
     if (existingWs && existingWs !== ws) {
       removeSocketFromAllRooms(existingWs);
       wsConnections.delete(existingWsId);
+      if (localUserToWsId.get(userId) === existingWsId) {
+        localUserToWsId.delete(userId);
+      }
       try {
         existingWs.close(4001, "Session replaced");
       } catch (error) {
@@ -22,6 +26,7 @@ export const addConnection = async (userId, ws) => {
 
   const wsId = generateWsId();
   wsConnections.set(wsId, ws);
+  localUserToWsId.set(userId, wsId);
   await redisClient.hset("user:wsid", userId, wsId);
   return wsId;
 };
@@ -33,6 +38,11 @@ export const removeConnection = async (userId, expectedWsId = null) => {
 
   if (targetWsId) {
     wsConnections.delete(targetWsId);
+  }
+
+  const localMappedWsId = localUserToWsId.get(userId);
+  if (!expectedWsId || localMappedWsId === expectedWsId) {
+    localUserToWsId.delete(userId);
   }
 
   if (!mappedWsId) {
@@ -47,6 +57,13 @@ export const removeConnection = async (userId, expectedWsId = null) => {
       `Skipped deleting active mapping for userId ${userId}; closing stale socket ${expectedWsId}.`,
     );
   }
+};
+
+// Retrieve only local WebSocket by userId (no Redis lookup)
+export const getLocalWebSocketByUserId = (userId) => {
+  const wsId = localUserToWsId.get(userId);
+  if (!wsId) return null;
+  return wsConnections.get(wsId) || null;
 };
 
 // Retrieve WebSocket by userId

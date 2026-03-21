@@ -6,15 +6,19 @@ import { Link } from "react-router-dom";
 import usePlayerStore from "@/store/use-player.js";
 import useAuthStore from "@/store/use-auth.js";
 import MusicSlider from "@/_components/navigation/Slider/Slider";
-import { decodeHtmlEntities, truncateString } from "@/utils/MusicUtils.js";
+import {
+  decodeHtmlEntities,
+  formatTime,
+  truncateString,
+} from "@/utils/MusicUtils.js";
 import { FaPlay, FaPause } from "react-icons/fa";
-import { 
-  FiTrendingUp, 
-  FiClock, 
-  FiMusic, 
+import {
+  FiTrendingUp,
+  FiClock,
+  FiMusic,
   FiHeadphones,
   FiArrowRight,
-  FiShuffle
+  FiShuffle,
 } from "react-icons/fi";
 import { IoMdHeart, IoMdHeartEmpty } from "react-icons/io";
 import useHover from "@/hooks/useHover.js";
@@ -22,10 +26,12 @@ import { useMediaQuery } from "usehooks-ts";
 import {
   HomeSkeleton,
   AlbumSkeleton,
-  MobileAlbumSkeleton
+  MobileAlbumSkeleton,
 } from "@/_components/skeletons/HomeSkeleton";
 import { LazyLoadImage } from "react-lazy-load-image-component";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import LeftArrow from "@/assets/images/left_arrow.png";
+import RightArrow from "@/assets/images/right_arrow.png";
 
 const Home = () => {
   const { playSong, isPlaying, songId } = usePlayerStore();
@@ -33,21 +39,23 @@ const Home = () => {
   const isMobile = useMediaQuery("(max-width: 767px)");
   const { isAuthenticated } = useAuthStore();
   const [isLiked, setIsLiked] = useState(false);
+  // Create a ref for the slider
+  const sliderRef = useRef(null);
 
   const {
     data: recommended,
     error,
-    isLoading
+    isLoading,
   } = useSWR("tunemate-recommend", () =>
-    tuneMateInstance.getTuneMateRecommended()
+    tuneMateInstance.getTuneMateRecommended(),
   );
 
   const {
     data: songHistory,
     err,
-    isLoading: RecentsLoading
+    isLoading: RecentsLoading,
   } = useSWR(isAuthenticated ? "user-song-history" : null, () =>
-    tuneMateInstance.getUserSongHistory()
+    tuneMateInstance.getUserSongHistory(),
   );
 
   if (error || err) {
@@ -60,8 +68,12 @@ const Home = () => {
             className="text-center"
           >
             <div className="text-6xl mb-4">🎵</div>
-            <h2 className="text-2xl font-bold text-white mb-2">Something went wrong</h2>
-            <p className="text-gray-400">Failed to load content. Please try again.</p>
+            <h2 className="text-2xl font-bold text-white mb-2">
+              Something went wrong
+            </h2>
+            <p className="text-gray-400">
+              Failed to load content. Please try again.
+            </p>
           </motion.div>
         </div>
       </Wrapper>
@@ -73,7 +85,6 @@ const Home = () => {
   return (
     <Wrapper>
       <div className="bg-gradient-to-b from-[#0f0f12] to-[#0a0a0c] rounded-xl min-h-[calc(100vh-7rem)] mb-20 md:mb-0 overflow-hidden">
-        
         {/* Hero Section - Song of the Week with Modern Design */}
         <AnimatePresence>
           {featuredSong && (
@@ -86,7 +97,7 @@ const Home = () => {
               {/* Animated Gradient Background */}
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-pink-500/30 animate-gradient-x" />
               <div className="absolute inset-0 bg-black/50" />
-              
+
               {/* Floating Particles */}
               <div className="absolute inset-0 overflow-hidden">
                 <div className="absolute top-20 left-10 w-32 h-32 bg-cyan-500 rounded-full filter blur-3xl opacity-20 animate-pulse" />
@@ -107,11 +118,11 @@ const Home = () => {
                       effect="blur"
                       className="relative w-40 h-40 md:w-56 md:h-56 rounded-2xl shadow-2xl object-cover"
                       wrapperProps={{
-                        style: { transitionDelay: "0.5s" }
+                        style: { transitionDelay: "0.5s" },
                       }}
                       src={featuredSong?.Content?.image}
                     />
-                    
+
                     {/* Play Button Overlay */}
                     <motion.button
                       whileHover={{ scale: 1.1 }}
@@ -131,19 +142,19 @@ const Home = () => {
                         SONG OF THE WEEK
                       </span>
                     </div>
-                    
+
                     <h1 className="jaro-head text-4xl md:text-6xl lg:text-7xl text-white mb-3 leading-tight">
                       {featuredSong?.title}
                     </h1>
-                    
+
                     <h2 className="ubuntu-bold text-xl md:text-3xl text-cyan-400 mb-2">
                       {featuredSong?.Content?.name}
                     </h2>
-                    
+
                     <p className="nunito-sans-bold text-gray-400 text-sm md:text-base mb-4">
                       {featuredSong?.Content?.album}
                     </p>
-                    
+
                     <div className="flex items-center justify-center md:justify-start gap-3">
                       <motion.button
                         whileHover={{ scale: 1.05 }}
@@ -154,7 +165,7 @@ const Home = () => {
                         <FaPlay size={12} />
                         <span>Play Now</span>
                       </motion.button>
-                      
+
                       <div className="flex items-center gap-2 text-gray-400 text-sm">
                         <FiHeadphones size={14} />
                         <span className="nunito-sans-bold">2.5M plays</span>
@@ -169,7 +180,7 @@ const Home = () => {
 
         {/* Recommended Section with Modern Header */}
         <div className="px-4 mt-8">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             className="flex items-center justify-between mb-4 group"
@@ -185,11 +196,23 @@ const Home = () => {
               whileHover={{ scale: 1.05 }}
               className="ml-4 text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
             >
-              <FiShuffle size={12} />
-              <span>Mix</span>
+              <div className="flex items-center space-x-3">
+                <div
+                  className="cursor-pointer hover:opacity-75"
+                  onClick={() => sliderRef.current?.slickPrev()}
+                >
+                  <img src={LeftArrow} alt="Previous" className="w-5 h-5" />
+                </div>
+                <div
+                  className="cursor-pointer hover:opacity-75"
+                  onClick={() => sliderRef.current?.slickNext()}
+                >
+                  <img src={RightArrow} alt="Next" className="w-5 h-5" />
+                </div>
+              </div>
             </motion.button>
           </motion.div>
-          
+
           {isLoading ? (
             <HomeSkeleton count={6} />
           ) : (
@@ -201,6 +224,7 @@ const Home = () => {
               <MusicSlider
                 title=""
                 musicList={recommended?.playlists}
+                ref={sliderRef}
               />
             </motion.div>
           )}
@@ -209,7 +233,7 @@ const Home = () => {
         {/* Recently Played Section with Modern Cards */}
         {isAuthenticated && (
           <div className="px-4 mt-12">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               className="flex items-center justify-between mb-6"
@@ -227,7 +251,10 @@ const Home = () => {
                   className="text-sm text-purple-400 hover:text-purple-300 transition-all flex items-center gap-1 group"
                 >
                   <span className="nunito-sans-bold">View All</span>
-                  <FiArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                  <FiArrowRight
+                    size={14}
+                    className="group-hover:translate-x-1 transition-transform"
+                  />
                 </motion.button>
               </Link>
             </motion.div>
@@ -246,7 +273,7 @@ const Home = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     {songHistory.slice(0, 12).map((song, index) => {
                       const isCurrentPlaying = songId === song.id && isPlaying;
-                      
+
                       return (
                         <motion.div
                           key={song.id}
@@ -262,7 +289,7 @@ const Home = () => {
                           <div className="relative rounded-xl overflow-hidden">
                             {/* Glow Effect on Hover */}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10" />
-                            
+
                             <LazyLoadImage
                               alt={song.name}
                               effect="blur"
@@ -270,9 +297,10 @@ const Home = () => {
                               className="w-full aspect-square object-cover transform transition-transform duration-700 group-hover:scale-110"
                               src={song.image}
                             />
-                            
+
                             {/* Play Button */}
-                            {(hoveredItemId === song.id || isCurrentPlaying) && (
+                            {(hoveredItemId === song.id ||
+                              isCurrentPlaying) && (
                               <motion.div
                                 initial={{ scale: 0, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
@@ -283,12 +311,15 @@ const Home = () => {
                                   {isCurrentPlaying ? (
                                     <FaPause size={20} className="text-white" />
                                   ) : (
-                                    <FaPlay size={18} className="ml-0.5 text-white" />
+                                    <FaPlay
+                                      size={18}
+                                      className="ml-0.5 text-white"
+                                    />
                                   )}
                                 </div>
                               </motion.div>
                             )}
-                            
+
                             {/* Index Badge */}
                             <div className="absolute top-3 left-3 w-7 h-7 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center border border-white/20 z-10">
                               <span className="text-xs font-mono text-white font-bold">
@@ -298,16 +329,22 @@ const Home = () => {
 
                             {/* Duration Badge */}
                             <div className="absolute bottom-3 right-3 px-2 py-1 rounded-md bg-black/60 backdrop-blur-sm text-xs text-gray-300 z-10">
-                              3:45
+                              {formatTime(song?.duration)}
                             </div>
                           </div>
-                          
+
                           <div className="mt-3 space-y-1">
                             <h3 className="nunito-sans-bold text-white text-sm truncate group-hover:text-cyan-400 transition-colors">
-                              {truncateString(decodeHtmlEntities(song.name), 20)}
+                              {truncateString(
+                                decodeHtmlEntities(song.name),
+                                20,
+                              )}
                             </h3>
                             <p className="ubuntu-bold text-xs text-gray-400 truncate">
-                              {truncateString(decodeHtmlEntities(song.album), 25)}
+                              {truncateString(
+                                decodeHtmlEntities(song.album),
+                                25,
+                              )}
                             </p>
                           </div>
                         </motion.div>
@@ -323,8 +360,12 @@ const Home = () => {
                     <div className="w-20 h-20 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-4">
                       <FiHeadphones size={32} className="text-purple-400" />
                     </div>
-                    <h3 className="jaro-head text-xl text-white mb-2">No recent songs</h3>
-                    <p className="nunito-sans-bold text-gray-400 text-sm">Start listening to see your history here</p>
+                    <h3 className="jaro-head text-xl text-white mb-2">
+                      No recent songs
+                    </h3>
+                    <p className="nunito-sans-bold text-gray-400 text-sm">
+                      Start listening to see your history here
+                    </p>
                   </motion.div>
                 )}
               </>

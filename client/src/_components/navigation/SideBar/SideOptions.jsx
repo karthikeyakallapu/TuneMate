@@ -22,16 +22,28 @@ const SideOptions = () => {
   const {
     data: playlists,
     error,
-    isLoading
+    isLoading,
   } = useSWR(isAuthenticated ? "user-playlists" : null, () =>
-    tuneMateInstance.getPlaylists()
+    tuneMateInstance.getPlaylists(),
   );
 
   if (error) return <ApiError />;
 
   const navItems = [
-    { to: "/recents", icon: FaHistory, activeIcon: FaClock, label: "Recents", color: "from-blue-500 to-cyan-500" },
-    { to: "/favorites", icon: IoMdHeartEmpty, activeIcon: IoMdHeart, label: "Favorites", color: "from-pink-500 to-rose-500" }
+    {
+      to: "/recents",
+      icon: FaHistory,
+      activeIcon: FaClock,
+      label: "Recents",
+      color: "from-blue-500 to-cyan-500",
+    },
+    {
+      to: "/favorites",
+      icon: IoMdHeartEmpty,
+      activeIcon: IoMdHeart,
+      label: "Favorites",
+      color: "from-pink-500 to-rose-500",
+    },
   ];
 
   return (
@@ -41,7 +53,7 @@ const SideOptions = () => {
         {navItems.map((item) => {
           const isActive = location.pathname === item.to;
           const Icon = isActive ? item.activeIcon : item.icon;
-          
+
           return (
             <Link to={item.to} key={item.to}>
               <motion.div
@@ -50,9 +62,9 @@ const SideOptions = () => {
                 className={cn(
                   "relative flex items-center rounded-xl transition-all duration-300 cursor-pointer group",
                   collapse ? "justify-center px-2 py-3" : "px-3 py-2.5",
-                  isActive 
-                    ? "bg-gradient-to-r from-white/10 to-white/5 shadow-lg" 
-                    : "hover:bg-white/5"
+                  isActive
+                    ? "bg-gradient-to-r from-white/10 to-white/5 shadow-lg"
+                    : "hover:bg-white/5",
                 )}
               >
                 {/* Active Indicator */}
@@ -65,28 +77,25 @@ const SideOptions = () => {
                     transition={{ duration: 0.2 }}
                   />
                 )}
-                
+
                 {/* Icon */}
-                <div className={cn(
-                  "relative",
-                  isActive && "text-cyan-400"
-                )}>
-                  <Icon 
-                    size={collapse ? 24 : 22} 
+                <div className={cn("relative", isActive && "text-cyan-400")}>
+                  <Icon
+                    size={collapse ? 24 : 22}
                     className={cn(
                       "transition-all duration-300",
-                      isActive 
-                        ? "text-cyan-400" 
-                        : "text-gray-400 group-hover:text-white"
+                      isActive
+                        ? "text-cyan-400"
+                        : "text-gray-400 group-hover:text-white",
                     )}
                   />
-                  
+
                   {/* Glow Effect */}
                   {isActive && (
                     <div className="absolute inset-0 blur-md bg-cyan-400/20 rounded-full -z-10" />
                   )}
                 </div>
-                
+
                 {/* Label */}
                 {!collapse && (
                   <motion.span
@@ -94,7 +103,9 @@ const SideOptions = () => {
                     animate={{ opacity: 1, x: 0 }}
                     className={cn(
                       "ml-3 text-sm font-medium transition-colors duration-200",
-                      isActive ? "text-white" : "text-gray-400 group-hover:text-white"
+                      isActive
+                        ? "text-white"
+                        : "text-gray-400 group-hover:text-white",
                     )}
                   >
                     {item.label}
@@ -118,21 +129,16 @@ const SideOptions = () => {
               Your Playlists
             </h2>
           </div>
-          <motion.div
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-5 h-5 rounded-full bg-white/5 flex items-center justify-center cursor-pointer hover:bg-white/10 transition-colors"
-          >
-            <span className="text-xs text-gray-400">+</span>
-          </motion.div>
         </div>
       )}
 
       {/* Scrollable Playlists Section */}
-      <div className={cn(
-        "flex-1 overflow-y-auto custom-scrollbar",
-        collapse ? "px-1" : "px-2"
-      )}>
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto custom-scrollbar",
+          collapse ? "px-1" : "px-2",
+        )}
+      >
         <AnimatePresence mode="wait">
           {isLoading ? (
             <motion.div
@@ -173,7 +179,9 @@ const SideOptions = () => {
           >
             <RiPlayList2Fill className="text-gray-600 mb-2" size={32} />
             <p className="text-xs text-gray-500">No playlists yet</p>
-            <p className="text-xs text-gray-600 mt-1">Create your first playlist</p>
+            <p className="text-xs text-gray-600 mt-1">
+              Create your first playlist
+            </p>
           </motion.div>
         )}
       </div>

@@ -85,6 +85,11 @@ const Player = () => {
     return fallback;
   }, []);
 
+  const isAutoplayBlockedError = useCallback(
+    (error) => error?.name === "NotAllowedError",
+    [],
+  );
+
   const applyRoomPlaybackState = useCallback(
     async (payload, { loadSong = true, defaultIsPlaying = false } = {}) => {
       if (!payload) return;
@@ -124,12 +129,23 @@ const Player = () => {
           audioElement.pause();
         }
       } catch (error) {
-        console.error("Failed to apply room playback state:", error);
+        if (!isAutoplayBlockedError(error)) {
+          console.error("Failed to apply room playback state:", error);
+        }
+        setIsPlaying(false);
+        return;
       }
 
       setIsPlaying(roomIsPlaying);
     },
-    [AudioRef, parseBoolean, playSong, seekToTimestamp, setIsPlaying],
+    [
+      AudioRef,
+      isAutoplayBlockedError,
+      parseBoolean,
+      playSong,
+      seekToTimestamp,
+      setIsPlaying,
+    ],
   );
 
   // Memoize the WebSocket message handler to avoid unnecessary re-creations
@@ -367,7 +383,7 @@ const Player = () => {
 
   // Handle audio play state change
   useEffect(() => {
-    handleAudioPlay();
+    handleAudioPlay(false, false);
   }, [handleAudioPlay]);
 
   useEffect(() => {

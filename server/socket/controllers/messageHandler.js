@@ -7,11 +7,11 @@ export const handleMessage = async (ws, data) => {
   console.log("Received message of type:", type, "with payload:", payload);
   switch (type) {
     case MESSAGE_TYPES.CONNECTION_REQUEST:
-      const { connectId, senderUsername, senderId } = payload;
+      const { connectId, senderUsername } = payload;
       await SyncControllerInstance.sendConnectionRequest(
         connectId,
         senderUsername,
-        senderId,
+        ws.userId,
       );
       break;
 
@@ -24,7 +24,10 @@ export const handleMessage = async (ws, data) => {
       break;
 
     case MESSAGE_TYPES.SYNC_ACTION:
-      await SyncControllerInstance.syncAction(payload);
+      await SyncControllerInstance.syncAction({
+        ...(payload || {}),
+        senderId: ws.userId,
+      });
       break;
 
     case MESSAGE_TYPES.CLOSE_CONNECTION:
@@ -48,11 +51,11 @@ export const handleMessage = async (ws, data) => {
       break;
 
     case MESSAGE_TYPES.LEAVE_ROOM:
-      await RoomControllerInstance.leaveRoom(payload);
+      await RoomControllerInstance.leaveRoom(payload, ws.userId);
       break;
 
     case MESSAGE_TYPES.SYNC_ROOM_ACTION:
-      await RoomControllerInstance.syncAction(payload);
+      await RoomControllerInstance.syncAction(payload, ws.userId);
       break;
 
     default:

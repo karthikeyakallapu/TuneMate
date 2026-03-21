@@ -7,7 +7,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node --env-file .env server.js",
-    "dev": "nodemon --env-file .env server.js"
+    "dev": "nodemon --env-file .env server.js",
+    "loadtest:idle": "npx artillery run loadtest/artillery.idle.yml",
+    "loadtest:room": "npx artillery run loadtest/artillery.room-sync.yml",
+    "loadtest:seed-room": "node --env-file .env loadtest/room-state.mjs seed",
+    "loadtest:cleanup-room": "node --env-file .env loadtest/room-state.mjs cleanup"
   },
   "author": "Karthikeya Kallapu",
   "license": "ISC",

@@ -1,18 +1,16 @@
 import MESSAGE_TYPES from "../utils/messageTypes.js";
-import { getWebSocketByUserId } from "../services/userConnections.js";
+import { getLocalWebSocketByUserId } from "../services/userConnections.js";
 import { redisClient } from "../config/redisClient.js";
 import { nanoid } from "nanoid";
 import {
   addToRoom,
-  broadcast,
   removeFromRoom,
   clearRoom,
 } from "../utils/roomUtils.js";
+import { publishRoomEvent, publishUserEvent } from "../services/pubSubBridge.js";
 
 class RoomController {
   constructor() {
-    this.pendingJoinRequests = new Map();
-    this.pendingJoinRequestTimeouts = new Map();
     this.joinRequestTimeoutMs = 2 * 60 * 1000;
   }
 
@@ -61,61 +59,88 @@ class RoomController {
   }
 
   getJoinRequestKey(roomId, userId) {
-    return `${roomId}:${userId}`;
+    return `room:${roomId}:joinRequest:${userId}`;
   }
 
-  setPendingJoinRequest(roomId, userId, requestData) {
+  getPendingJoinRequestSetKey(roomId) {
+    return `room:${roomId}:joinRequest:members`;
+  }
+
+  async setPendingJoinRequest(roomId, userId, requestData) {
     const key = this.getJoinRequestKey(roomId, userId);
-    const existingTimeout = this.pendingJoinRequestTimeouts.get(key);
-    if (existingTimeout) {
-      clearTimeout(existingTimeout);
+    const setKey = this.getPendingJoinRequestSetKey(roomId);
+    const serializedRequest = JSON.stringify(requestData || {});
+    const ttlMs = this.joinRequestTimeoutMs;
+
+    await redisClient
+      .multi()
+      .set(key, serializedRequest, "PX", ttlMs)
+      .sadd(setKey, userId)
+      .pexpire(setKey, ttlMs)
+      .exec();
+  }
+
+  async getPendingJoinRequest(roomId, userId) {
+    const key = this.getJoinRequestKey(roomId, userId);
+    const serializedRequest = await redisClient.get(key);
+    if (!serializedRequest) return null;
+
+    try {
+      return JSON.parse(serializedRequest);
+    } catch (error) {
+      console.error("Failed to parse pending join request:", error);
+      return null;
+    }
+  }
+
+  async clearPendingJoinRequest(roomId, userId) {
+    const key = this.getJoinRequestKey(roomId, userId);
+    const setKey = this.getPendingJoinRequestSetKey(roomId);
+
+    await redisClient.multi().del(key).srem(setKey, userId).exec();
+  }
+
+  async clearPendingRequestsForRoom(roomId) {
+    const setKey = this.getPendingJoinRequestSetKey(roomId);
+    const pendingUserIds = await redisClient.smembers(setKey);
+
+    if (!pendingUserIds || pendingUserIds.length === 0) {
+      await redisClient.del(setKey);
+      return;
     }
 
-    this.pendingJoinRequests.set(key, requestData);
-
-    const timeout = setTimeout(() => {
-      this.pendingJoinRequests.delete(key);
-      this.pendingJoinRequestTimeouts.delete(key);
-    }, this.joinRequestTimeoutMs);
-
-    this.pendingJoinRequestTimeouts.set(key, timeout);
-  }
-
-  getPendingJoinRequest(roomId, userId) {
-    const key = this.getJoinRequestKey(roomId, userId);
-    return this.pendingJoinRequests.get(key) || null;
-  }
-
-  clearPendingJoinRequest(roomId, userId) {
-    const key = this.getJoinRequestKey(roomId, userId);
-    const timeout = this.pendingJoinRequestTimeouts.get(key);
-    if (timeout) {
-      clearTimeout(timeout);
+    const pipeline = redisClient.pipeline();
+    for (const pendingUserId of pendingUserIds) {
+      pipeline.del(this.getJoinRequestKey(roomId, pendingUserId));
     }
-    this.pendingJoinRequestTimeouts.delete(key);
-    this.pendingJoinRequests.delete(key);
-  }
-
-  clearPendingRequestsForRoom(roomId) {
-    const keyPrefix = `${roomId}:`;
-    for (const key of this.pendingJoinRequests.keys()) {
-      if (!key.startsWith(keyPrefix)) continue;
-      const timeout = this.pendingJoinRequestTimeouts.get(key);
-      if (timeout) {
-        clearTimeout(timeout);
-      }
-      this.pendingJoinRequestTimeouts.delete(key);
-      this.pendingJoinRequests.delete(key);
-    }
+    pipeline.del(setKey);
+    await pipeline.exec();
   }
 
   async getValidWebSocket(userId) {
-    const ws = await getWebSocketByUserId(userId);
-    if (!ws || typeof ws.send !== "function") {
-      console.error(`Invalid WebSocket object for userId: ${userId}.`);
-      return null;
-    }
+    const ws = getLocalWebSocketByUserId(userId);
+    if (!ws || typeof ws.send !== "function") return null;
     return ws;
+  }
+
+  async emitToUser(userId, message) {
+    if (!userId || !message) return;
+    await publishUserEvent({ userId, message });
+  }
+
+  async emitToRoom(roomId, message, excludeUserId = null) {
+    if (!roomId || !message) return;
+    await publishRoomEvent({
+      roomId,
+      message,
+      excludeUserId,
+    });
+  }
+
+  async isUserOnline(userId) {
+    if (!userId) return false;
+    const wsId = await redisClient.hget("user:wsid", userId);
+    return Boolean(wsId);
   }
 
   async getRoomMembers(roomId) {
@@ -189,18 +214,14 @@ class RoomController {
 
       const members = await this.getRoomMembers(roomId);
 
-      if (senderWs) {
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ROOM_CREATED,
-            payload: {
-              roomId,
-              hostId: createdById,
-              members,
-            },
-          }),
-        );
-      }
+      await this.emitToUser(createdById, {
+        type: MESSAGE_TYPES.ROOM_CREATED,
+        payload: {
+          roomId,
+          hostId: createdById,
+          members,
+        },
+      });
     } catch (error) {
       console.error("Failed to create room:", error);
     }
@@ -218,24 +239,20 @@ class RoomController {
       if (!senderWs) return;
 
       if (!exists) {
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Room not found" },
-          }),
-        );
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Room not found" },
+        });
         return;
       }
 
       const roomState = await redisClient.hgetall(`room:${roomId}`);
       const hostId = roomState?.hostId;
       if (!hostId) {
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Room state unavailable" },
-          }),
-        );
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Room state unavailable" },
+        });
         return;
       }
 
@@ -254,12 +271,10 @@ class RoomController {
           members,
           Date.now(),
         );
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ROOM_JOINED,
-            payload,
-          }),
-        );
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ROOM_JOINED,
+          payload,
+        });
         return;
       }
 
@@ -275,59 +290,51 @@ class RoomController {
           members,
           Date.now(),
         );
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ROOM_JOINED,
-            payload,
-          }),
-        );
-        broadcast(roomId, {
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ROOM_JOINED,
+          payload,
+        });
+        await this.emitToRoom(roomId, {
           type: MESSAGE_TYPES.MEMBERS_UPDATED,
           payload: { members, roomId },
         });
         return;
       }
 
-      const hostWs = await this.getValidWebSocket(hostId);
-      if (!hostWs || hostWs.readyState !== hostWs.OPEN) {
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Host is offline. Please try again later." },
-          }),
-        );
+      const hostIsOnline = await this.isUserOnline(hostId);
+      if (!hostIsOnline) {
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Host is offline. Please try again later." },
+        });
         return;
       }
 
       const requestedAt = Date.now();
-      this.setPendingJoinRequest(roomId, userId, {
+      await this.setPendingJoinRequest(roomId, userId, {
         roomId,
         userId,
         username,
         requestedAt,
       });
 
-      senderWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ROOM_JOIN_REQUEST_SENT,
-          payload: {
-            roomId,
-            message: "Join request sent to host. Waiting for approval.",
-          },
-        }),
-      );
+      await this.emitToUser(userId, {
+        type: MESSAGE_TYPES.ROOM_JOIN_REQUEST_SENT,
+        payload: {
+          roomId,
+          message: "Join request sent to host. Waiting for approval.",
+        },
+      });
 
-      hostWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ROOM_JOIN_REQUEST,
-          payload: {
-            roomId,
-            userId,
-            username,
-            requestedAt,
-          },
-        }),
-      );
+      await this.emitToUser(hostId, {
+        type: MESSAGE_TYPES.ROOM_JOIN_REQUEST,
+        payload: {
+          roomId,
+          userId,
+          username,
+          requestedAt,
+        },
+      });
     } catch (error) {
       console.log(error);
     }
@@ -350,65 +357,57 @@ class RoomController {
 
       const exists = await redisClient.exists(`room:${roomId}`);
       if (!exists) {
-        this.clearPendingJoinRequest(roomId, requesterId);
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Room not found" },
-          }),
-        );
+        await this.clearPendingJoinRequest(roomId, requesterId);
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Room not found" },
+        });
         return;
       }
 
       const roomState = await redisClient.hgetall(`room:${roomId}`);
       if (roomState?.hostId !== hostUserId) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Only the host can approve room joins" },
-          }),
-        );
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Only the host can approve room joins" },
+        });
         return;
       }
 
-      const pendingRequest = this.getPendingJoinRequest(roomId, requesterId);
+      const pendingRequest = await this.getPendingJoinRequest(
+        roomId,
+        requesterId,
+      );
       if (!pendingRequest) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Join request expired or not found" },
-          }),
-        );
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Join request expired or not found" },
+        });
         return;
       }
 
-      this.clearPendingJoinRequest(roomId, requesterId);
+      await this.clearPendingJoinRequest(roomId, requesterId);
 
-      const requesterWs = await this.getValidWebSocket(requesterId);
-      if (!requesterWs) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Requester is no longer online" },
-          }),
-        );
+      const requesterIsOnline = await this.isUserOnline(requesterId);
+      if (!requesterIsOnline) {
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Requester is no longer online" },
+        });
         return;
       }
 
       if (!approved) {
-        requesterWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ROOM_JOIN_DECLINED,
-            payload: {
-              roomId,
-              message: "Host declined your join request",
-            },
-          }),
-        );
+        await this.emitToUser(requesterId, {
+          type: MESSAGE_TYPES.ROOM_JOIN_DECLINED,
+          payload: {
+            roomId,
+            message: "Host declined your join request",
+          },
+        });
         return;
       }
 
-      addToRoom(roomId, requesterWs);
       await redisClient.hset(
         `room:${roomId}:members`,
         requesterId,
@@ -425,21 +424,15 @@ class RoomController {
         Date.now(),
       );
 
-      requesterWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ROOM_JOINED,
-          payload: payloadToRequester,
-        }),
-      );
+      await this.emitToUser(requesterId, {
+        type: MESSAGE_TYPES.ROOM_JOINED,
+        payload: payloadToRequester,
+      });
 
-      broadcast(
-        roomId,
-        {
-          type: MESSAGE_TYPES.MEMBERS_UPDATED,
-          payload: { members, roomId },
-        },
-        requesterWs,
-      );
+      await this.emitToRoom(roomId, {
+        type: MESSAGE_TYPES.MEMBERS_UPDATED,
+        payload: { members, roomId },
+      });
     } catch (error) {
       console.log(error);
     }
@@ -455,33 +448,27 @@ class RoomController {
 
       const exists = await redisClient.exists(`room:${roomId}`);
       if (!exists) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Room not found" },
-          }),
-        );
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Room not found" },
+        });
         return;
       }
 
       const roomState = await redisClient.hgetall(`room:${roomId}`);
       if (roomState?.hostId !== hostUserId) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Only the host can remove members" },
-          }),
-        );
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Only the host can remove members" },
+        });
         return;
       }
 
       if (targetUserId === hostUserId) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Host cannot remove themselves from the room" },
-          }),
-        );
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Host cannot remove themselves from the room" },
+        });
         return;
       }
 
@@ -490,49 +477,44 @@ class RoomController {
         targetUserId,
       );
       if (!targetUsername) {
-        hostWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "User is not in this room" },
-          }),
-        );
+        await this.emitToUser(hostUserId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "User is not in this room" },
+        });
         return;
       }
 
-      this.clearPendingJoinRequest(roomId, targetUserId);
+      await this.clearPendingJoinRequest(roomId, targetUserId);
       await this.removeUserActiveRoom(targetUserId);
       await redisClient.hdel(`room:${roomId}:members`, targetUserId);
 
-      const targetWs = await getWebSocketByUserId(targetUserId);
-      if (targetWs && typeof targetWs.send === "function") {
+      const targetWs = await this.getValidWebSocket(targetUserId);
+      if (targetWs) {
         removeFromRoom(roomId, targetWs);
-        targetWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.REMOVED_FROM_ROOM,
-            payload: {
-              roomId,
-              message: "You were removed from the room by the host",
-            },
-          }),
-        );
       }
 
+      await this.emitToUser(targetUserId, {
+        type: MESSAGE_TYPES.REMOVED_FROM_ROOM,
+        payload: {
+          roomId,
+          message: "You were removed from the room by the host",
+        },
+      });
+
       const members = await this.getRoomMembers(roomId);
-      broadcast(roomId, {
+      await this.emitToRoom(roomId, {
         type: MESSAGE_TYPES.MEMBERS_UPDATED,
         payload: { members, roomId },
       });
 
-      hostWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ROOM_MEMBER_REMOVED,
-          payload: {
-            roomId,
-            userId: targetUserId,
-            username: targetUsername,
-          },
-        }),
-      );
+      await this.emitToUser(hostUserId, {
+        type: MESSAGE_TYPES.ROOM_MEMBER_REMOVED,
+        payload: {
+          roomId,
+          userId: targetUserId,
+          username: targetUsername,
+        },
+      });
     } catch (error) {
       console.error("Failed to remove room member:", error);
     }
@@ -563,12 +545,10 @@ class RoomController {
         Date.now(),
       );
 
-      senderWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ROOM_JOINED,
-          payload,
-        }),
-      );
+      await this.emitToUser(userId, {
+        type: MESSAGE_TYPES.ROOM_JOINED,
+        payload,
+      });
 
       return roomId;
     } catch (error) {
@@ -577,23 +557,19 @@ class RoomController {
     }
   }
 
-  async syncAction(payload) {
-    const { roomId, action, userId } = payload;
+  async syncAction(payload, socketUserId = null) {
+    const { roomId, action } = payload || {};
+    const userId = socketUserId || payload?.userId;
 
-    if (!roomId) return;
+    if (!roomId || !userId) return;
 
     const exists = await redisClient.exists(`room:${roomId}`);
 
-    const senderWs = await this.getValidWebSocket(userId);
-    if (!senderWs) return;
-
     if (!exists) {
-      senderWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ERROR,
-          payload: { message: "Room not found" },
-        }),
-      );
+      await this.emitToUser(userId, {
+        type: MESSAGE_TYPES.ERROR,
+        payload: { message: "Room not found" },
+      });
       return;
     }
 
@@ -620,7 +596,7 @@ class RoomController {
           updatedAt: String(actionTime),
         });
 
-        broadcast(
+        await this.emitToRoom(
           roomId,
           {
             type: MESSAGE_TYPES.HANDLE_SONG_PLAY,
@@ -630,7 +606,7 @@ class RoomController {
               serverTime: actionTime,
             },
           },
-          senderWs,
+          userId,
         );
         break;
       }
@@ -654,7 +630,7 @@ class RoomController {
           updatedAt: String(actionTime),
         });
 
-        broadcast(
+        await this.emitToRoom(
           roomId,
           {
             type: MESSAGE_TYPES.PLAY_SONG,
@@ -665,7 +641,7 @@ class RoomController {
               serverTime: actionTime,
             },
           },
-          senderWs,
+          userId,
         );
         break;
       }
@@ -682,7 +658,7 @@ class RoomController {
           updatedAt: String(actionTime),
         });
 
-        broadcast(
+        await this.emitToRoom(
           roomId,
           {
             type: MESSAGE_TYPES.SEEK,
@@ -692,19 +668,19 @@ class RoomController {
               serverTime: actionTime,
             },
           },
-          senderWs,
+          userId,
         );
         break;
       }
 
       case "SEND_CHAT":
-        broadcast(
+        await this.emitToRoom(
           roomId,
           {
             type: MESSAGE_TYPES.RECEIVE_CHAT,
             payload: { chat: payload.chat },
           },
-          senderWs,
+          userId,
         );
         break;
 
@@ -713,9 +689,10 @@ class RoomController {
     }
   }
 
-  async leaveRoom(payload) {
+  async leaveRoom(payload, socketUserId = null) {
     try {
-      const { roomId, userId } = payload;
+      const { roomId } = payload || {};
+      const userId = socketUserId || payload?.userId;
       if (!roomId || !userId) return;
 
       const exists = await redisClient.exists(`room:${roomId}`);
@@ -724,12 +701,10 @@ class RoomController {
 
       if (!exists) {
         await this.removeUserActiveRoom(userId);
-        senderWs.send(
-          JSON.stringify({
-            type: MESSAGE_TYPES.ERROR,
-            payload: { message: "Room not found" },
-          }),
-        );
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ERROR,
+          payload: { message: "Room not found" },
+        });
         return;
       }
 
@@ -745,9 +720,9 @@ class RoomController {
         for (const member of members) {
           await this.removeUserActiveRoom(member.userId);
         }
-        this.clearPendingRequestsForRoom(roomId);
+        await this.clearPendingRequestsForRoom(roomId);
 
-        broadcast(roomId, {
+        await this.emitToRoom(roomId, {
           type: MESSAGE_TYPES.ROOM_CLOSED,
           payload: {
             roomId,
@@ -764,24 +739,22 @@ class RoomController {
 
       const membersCount = await redisClient.hlen(`room:${roomId}:members`);
       if (membersCount === 0) {
-        this.clearPendingRequestsForRoom(roomId);
+        await this.clearPendingRequestsForRoom(roomId);
         clearRoom(roomId);
         await redisClient.del(`room:${roomId}`, `room:${roomId}:members`);
       } else {
         // broadcast updated member list to remaining users
         const members = await this.getRoomMembers(roomId);
-        broadcast(roomId, {
+        await this.emitToRoom(roomId, {
           type: MESSAGE_TYPES.MEMBERS_UPDATED,
           payload: { members, roomId },
         });
       }
 
-      senderWs.send(
-        JSON.stringify({
-          type: MESSAGE_TYPES.ROOM_LEFT,
-          payload: { roomId },
-        }),
-      );
+      await this.emitToUser(userId, {
+        type: MESSAGE_TYPES.ROOM_LEFT,
+        payload: { roomId },
+      });
     } catch (error) {
       console.error("Failed to leave room:", error);
     }

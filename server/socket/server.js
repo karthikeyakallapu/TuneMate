@@ -14,7 +14,7 @@ app.use(router);
 
 const server = http.createServer(app);
 
-startWebSocketServer(server);
+await startWebSocketServer(server);
 
 server.listen(PORT, () => {
   console.log(`Server is listening on http://localhost:${PORT}`);

@@ -17,15 +17,28 @@ export function removeFromRoom(roomId, ws) {
   }
 }
 
-export function broadcast(roomId, message, excludeWs = null) {
+export function broadcast(roomId, message, exclude = null) {
   const clients = rooms.get(roomId) || [];
   const serializedMessage =
     typeof message === "string" ? message : JSON.stringify(message);
 
+  const excludeConfig =
+    exclude &&
+    typeof exclude === "object" &&
+    ("excludeWs" in exclude || "excludeUserId" in exclude)
+      ? exclude
+      : { excludeWs: exclude, excludeUserId: null };
+
   for (const ws of clients) {
-    if (ws !== excludeWs && ws.readyState === ws.OPEN) {
-      ws.send(serializedMessage);
+    if (ws === excludeConfig.excludeWs) continue;
+    if (
+      excludeConfig.excludeUserId &&
+      ws?.userId === excludeConfig.excludeUserId
+    ) {
+      continue;
     }
+    if (ws.readyState !== ws.OPEN) continue;
+    ws.send(serializedMessage);
   }
 }
 
