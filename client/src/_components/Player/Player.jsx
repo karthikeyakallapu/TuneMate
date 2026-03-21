@@ -1,12 +1,4 @@
-import { HiUsers, HiOutlineMusicNote, HiOutlineVolumeUp } from "react-icons/hi";
-import {
-  FiPlay,
-  FiPause,
-  FiSkipForward,
-  FiSkipBack,
-  FiRadio,
-  FiHeadphones,
-} from "react-icons/fi";
+import { HiUsers } from "react-icons/hi";
 import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import MusicSeek from "@/_components/Player/MusicSeek.jsx";
@@ -35,7 +27,8 @@ const Player = () => {
     handleAudioPlay,
     playSong,
     setMusicSeekTime,
-    isPlaying,
+    seekToTimestamp,
+    setIsPlaying,
   } = usePlayerStore();
 
   const { isAuthenticated, userId } = useAuthStore();
@@ -54,7 +47,7 @@ const Player = () => {
 
   const { isUserSyncVisible, showUserSync, hideUserSync } = useUserSyncStore();
   const { isNotifierVisible, showNotifier } = useNotifierStore();
-  const [incomingMessage, setIncomingMessage] = useState("");
+  const [incomingMessage, setIncomingMessage] = useState();
   const [isIncomingMessageVisible, setIsIncomingMessageVisible] =
     useState(false);
   const [isHoveringSync, setIsHoveringSync] = useState(false);
@@ -71,12 +64,8 @@ const Player = () => {
   }, [loadPlayerState, getFavorites]);
 
   const showIncomingFloatingMessage = useCallback((chat) => {
-    const incomingChat = typeof chat === "string" ? chat.trim() : "";
-    if (!incomingChat) return;
-
-    setIncomingMessage(incomingChat);
+    setIncomingMessage(chat);
     setIsIncomingMessageVisible(true);
-
     if (floatingMessageTimeoutRef.current) {
       clearTimeout(floatingMessageTimeoutRef.current);
     }
@@ -85,6 +74,63 @@ const Player = () => {
       setIsIncomingMessageVisible(false);
     }, 3500);
   }, []);
+
+  const parseBoolean = useCallback((value, fallback = false) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const normalizedValue = value.toLowerCase();
+      if (normalizedValue === "true") return true;
+      if (normalizedValue === "false") return false;
+    }
+    return fallback;
+  }, []);
+
+  const applyRoomPlaybackState = useCallback(
+    async (payload, { loadSong = true, defaultIsPlaying = false } = {}) => {
+      if (!payload) return;
+
+      const incomingSongId = payload.songId;
+      const roomIsPlaying = parseBoolean(payload.isPlaying, defaultIsPlaying);
+      const baseTimestamp = Number(payload.timestamp);
+      const serverTime = Number(payload.serverTime);
+
+      let targetTimestamp = Number.isFinite(baseTimestamp)
+        ? Math.max(0, baseTimestamp)
+        : 0;
+
+      if (roomIsPlaying && Number.isFinite(serverTime)) {
+        targetTimestamp += Math.max(0, (Date.now() - serverTime) / 1000);
+      }
+
+      if (loadSong) {
+        if (!incomingSongId) return;
+        await playSong(incomingSongId, false);
+      }
+
+      seekToTimestamp(targetTimestamp);
+
+      const audioElement = AudioRef.current;
+      if (!audioElement) {
+        setIsPlaying(roomIsPlaying);
+        return;
+      }
+
+      try {
+        if (roomIsPlaying) {
+          if (audioElement.paused) {
+            await audioElement.play();
+          }
+        } else if (!audioElement.paused) {
+          audioElement.pause();
+        }
+      } catch (error) {
+        console.error("Failed to apply room playback state:", error);
+      }
+
+      setIsPlaying(roomIsPlaying);
+    },
+    [AudioRef, parseBoolean, playSong, seekToTimestamp, setIsPlaying],
+  );
 
   // Memoize the WebSocket message handler to avoid unnecessary re-creations
   const handleSocketMessage = useCallback(
@@ -155,15 +201,41 @@ const Player = () => {
             break;
 
           case "PLAY_SONG":
-            await playSong(data.payload.songId, false);
+            await applyRoomPlaybackState(data.payload, {
+              loadSong: true,
+              defaultIsPlaying: true,
+            });
             break;
 
           case "HANDLE_SONG_PLAY":
-            await handleAudioPlay(false);
+            if (
+              data.payload &&
+              (typeof data.payload.isPlaying === "boolean" ||
+                typeof data.payload.timestamp !== "undefined")
+            ) {
+              await applyRoomPlaybackState(data.payload, {
+                loadSong: false,
+                defaultIsPlaying: !AudioRef.current?.paused,
+              });
+            } else {
+              await handleAudioPlay(false);
+            }
             break;
 
           case "SEEK":
-            setMusicSeekTime(data.payload.musicSeekTime, false);
+            if (data.payload && typeof data.payload.timestamp !== "undefined") {
+              const incomingTimestamp = Number(data.payload.timestamp);
+              if (Number.isFinite(incomingTimestamp)) {
+                const serverTime = Number(data.payload.serverTime);
+                const syncOffset =
+                  Number.isFinite(serverTime) && !AudioRef.current?.paused
+                    ? Math.max(0, (Date.now() - serverTime) / 1000)
+                    : 0;
+                seekToTimestamp(incomingTimestamp + syncOffset);
+              }
+            } else {
+              setMusicSeekTime(data.payload.musicSeekTime, false);
+            }
             break;
 
           case "RECEIVE_CHAT":
@@ -174,6 +246,12 @@ const Player = () => {
           case "ROOM_JOINED":
             if (data.payload?.roomId) {
               setRoomId(data.payload.roomId);
+            }
+            if (data.type === "ROOM_JOINED") {
+              await applyRoomPlaybackState(data.payload, {
+                loadSong: true,
+                defaultIsPlaying: false,
+              });
             }
             break;
 
@@ -245,9 +323,11 @@ const Player = () => {
       showNotifier,
       setConnectionStatus,
       setMusicSeekTime,
-      playSong,
+      seekToTimestamp,
+      applyRoomPlaybackState,
       handleAudioPlay,
       showIncomingFloatingMessage,
+      AudioRef,
     ],
   );
 

@@ -67,16 +67,61 @@ const usePlayerStore = create(
 
       setMusicSeekTime: (time, shouldBroadcast = true) => {
         const { AudioRef, duration } = get();
+        const normalizedProgress = Number(time);
+        let newTime = null;
 
-        if (AudioRef.current && duration > 0) {
-          const newTime = (time / 100) * duration;
+        if (
+          AudioRef.current &&
+          duration > 0 &&
+          Number.isFinite(normalizedProgress)
+        ) {
+          newTime = (normalizedProgress / 100) * duration;
           AudioRef.current.currentTime = newTime;
           set({ currentTime: newTime });
         }
         // Broadcast action if needed
         if (shouldBroadcast) {
-          broadcastAction("SEEK", { musicSeekTime: time });
+          broadcastAction("SEEK", {
+            musicSeekTime: normalizedProgress,
+            timestamp:
+              newTime !== null
+                ? newTime
+                : Math.max(
+                    0,
+                    Number(AudioRef.current?.currentTime || get().currentTime),
+                  ),
+          });
         }
+      },
+      seekToTimestamp: (timestamp) => {
+        const { AudioRef } = get();
+        const audioElement = AudioRef.current;
+        const normalizedTimestamp = Number(timestamp);
+
+        if (!audioElement || !Number.isFinite(normalizedTimestamp)) return;
+
+        const applyTimestamp = () => {
+          const audioDuration = Number(audioElement.duration);
+          const hasDuration = Number.isFinite(audioDuration) && audioDuration > 0;
+          const safeTimestamp = hasDuration
+            ? Math.min(Math.max(0, normalizedTimestamp), audioDuration)
+            : Math.max(0, normalizedTimestamp);
+
+          audioElement.currentTime = safeTimestamp;
+          set({ currentTime: safeTimestamp });
+        };
+
+        if (audioElement.readyState >= 1) {
+          applyTimestamp();
+          return;
+        }
+
+        const onLoadedMetadata = () => {
+          applyTimestamp();
+          audioElement.removeEventListener("loadedmetadata", onLoadedMetadata);
+        };
+
+        audioElement.addEventListener("loadedmetadata", onLoadedMetadata);
       },
       playSong: async (id, shouldBroadcast = true) => {
         const actionQueue = [];
@@ -85,7 +130,11 @@ const usePlayerStore = create(
           try {
             // Broadcast to WebSocket only if explicitly allowed
             if (shouldBroadcast) {
-              broadcastAction("PLAY_SONG", { songId: id });
+              broadcastAction("PLAY_SONG", {
+                songId: id,
+                isPlaying: true,
+                timestamp: 0,
+              });
             }
             const response = await MusicServiceInstance.getSingleSong(id);
             if (!response || !response[0])
@@ -274,7 +323,10 @@ const usePlayerStore = create(
 
           // Broadcast to WebSocket only if explicitly allowed
           if (shouldBroadcast) {
-            broadcastAction("HANDLE_SONG_PLAY");
+            broadcastAction("HANDLE_SONG_PLAY", {
+              isPlaying: !audio.paused,
+              timestamp: Math.max(0, Number(audio.currentTime || 0)),
+            });
           }
         } catch (error) {
           console.error("Error in handleAudioPlay:", error);

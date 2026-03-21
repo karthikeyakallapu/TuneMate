@@ -125,7 +125,6 @@ class SyncController {
             }),
           );
           break;
-          break;
 
         default:
           console.warn(`Unknown action type: ${action}`);

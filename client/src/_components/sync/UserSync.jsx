@@ -45,7 +45,7 @@ const UserSync = () => {
     roomHostId,
     setRoomId,
   } = useWebSocketStore();
-  const { sendMessage } = usePlayerStore();
+  const { sendMessage, song, isPlaying, AudioRef } = usePlayerStore();
   const userSyncRef = useRef(null);
   const { hideUserSync } = useUserSyncStore();
 
@@ -214,12 +214,23 @@ const UserSync = () => {
   const handleCreateRoom = () => {
     setIsCreatingRoom(true);
     try {
+      const hasSong = Boolean(song?.id);
+      const currentTimestamp = Math.max(
+        0,
+        Number(AudioRef.current?.currentTime || 0),
+      );
+      const shouldPlayInRoom =
+        hasSong && isPlaying && !AudioRef.current?.paused;
+
       socket.send(
         JSON.stringify({
           type: "CREATE_ROOM",
           payload: {
             createdBy: username,
             createdById: userId,
+            songId: hasSong ? song.id : "",
+            isPlaying: shouldPlayInRoom,
+            timestamp: currentTimestamp,
           },
         }),
       );
@@ -273,7 +284,7 @@ const UserSync = () => {
       socket.readyState === WebSocket.OPEN &&
       (connectionStatus || roomId)
     ) {
-      sendMessage(trimmedMessage);
+      sendMessage({ trimmedMessage, username });
       setChatMessage("");
       return;
     }

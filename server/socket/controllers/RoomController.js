@@ -16,6 +16,50 @@ class RoomController {
     this.joinRequestTimeoutMs = 2 * 60 * 1000;
   }
 
+  parseBoolean(value, fallback = false) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const normalizedValue = value.toLowerCase();
+      if (normalizedValue === "true") return true;
+      if (normalizedValue === "false") return false;
+    }
+    return fallback;
+  }
+
+  parseNumber(value, fallback = 0) {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue) ? parsedValue : fallback;
+  }
+
+  getCurrentRoomTimestamp(roomState, nowMs = Date.now()) {
+    const baseTimestamp = Math.max(
+      0,
+      this.parseNumber(roomState?.timestamp, 0),
+    );
+    const isPlaying = this.parseBoolean(roomState?.isPlaying, false);
+    const updatedAt = this.parseNumber(roomState?.updatedAt, nowMs);
+
+    if (!isPlaying) {
+      return baseTimestamp;
+    }
+
+    const elapsedSeconds = Math.max(0, (nowMs - updatedAt) / 1000);
+    return baseTimestamp + elapsedSeconds;
+  }
+
+  buildRoomJoinedPayload(roomState, roomId, members, nowMs = Date.now()) {
+    return {
+      ...roomState,
+      roomId,
+      members,
+      songId: roomState?.songId || "",
+      isPlaying: this.parseBoolean(roomState?.isPlaying, false),
+      timestamp: this.getCurrentRoomTimestamp(roomState, nowMs),
+      updatedAt: this.parseNumber(roomState?.updatedAt, nowMs),
+      serverTime: nowMs,
+    };
+  }
+
   getJoinRequestKey(roomId, userId) {
     return `${roomId}:${userId}`;
   }
@@ -96,18 +140,35 @@ class RoomController {
 
   async createRoom(payload) {
     try {
-      const { createdBy, createdById } = payload;
+      const {
+        createdBy,
+        createdById,
+        songId: initialSongId = "",
+        isPlaying: initialIsPlaying = false,
+        timestamp: initialTimestamp = 0,
+      } = payload || {};
 
       const roomId = nanoid(10);
 
       console.log(`Creating room ${roomId} by user ${createdBy}`);
 
+      const normalizedSongId =
+        typeof initialSongId === "string" ? initialSongId : "";
+      const normalizedTimestamp = Math.max(
+        0,
+        this.parseNumber(initialTimestamp, 0),
+      );
+      const normalizedIsPlaying =
+        normalizedSongId.length > 0 &&
+        this.parseBoolean(initialIsPlaying, false);
+
       // create room state
       await redisClient.hset(`room:${roomId}`, {
         hostId: createdById,
         hostName: createdBy,
-        isPlaying: "false",
-        timestamp: "0",
+        songId: normalizedSongId,
+        isPlaying: String(normalizedIsPlaying),
+        timestamp: String(normalizedTimestamp),
         updatedAt: String(Date.now()),
       });
 
@@ -178,21 +239,25 @@ class RoomController {
         return;
       }
 
-      const existingMember = await redisClient.hget(`room:${roomId}:members`, userId);
+      const existingMember = await redisClient.hget(
+        `room:${roomId}:members`,
+        userId,
+      );
       if (existingMember) {
         addToRoom(roomId, senderWs);
         await this.setUserActiveRoom(userId, roomId);
 
         const members = await this.getRoomMembers(roomId);
+        const payload = this.buildRoomJoinedPayload(
+          roomState,
+          roomId,
+          members,
+          Date.now(),
+        );
         senderWs.send(
           JSON.stringify({
             type: MESSAGE_TYPES.ROOM_JOINED,
-            payload: {
-              ...roomState,
-              roomId,
-              members,
-              serverTime: Date.now(),
-            },
+            payload,
           }),
         );
         return;
@@ -204,15 +269,16 @@ class RoomController {
         await this.setUserActiveRoom(userId, roomId);
 
         const members = await this.getRoomMembers(roomId);
+        const payload = this.buildRoomJoinedPayload(
+          roomState,
+          roomId,
+          members,
+          Date.now(),
+        );
         senderWs.send(
           JSON.stringify({
             type: MESSAGE_TYPES.ROOM_JOINED,
-            payload: {
-              ...roomState,
-              roomId,
-              members,
-              serverTime: Date.now(),
-            },
+            payload,
           }),
         );
         broadcast(roomId, {
@@ -270,7 +336,12 @@ class RoomController {
   async respondToJoinRoomRequest(payload, hostUserId) {
     try {
       const { roomId, requesterId, approved } = payload || {};
-      if (!roomId || !requesterId || typeof approved !== "boolean" || !hostUserId) {
+      if (
+        !roomId ||
+        !requesterId ||
+        typeof approved !== "boolean" ||
+        !hostUserId
+      ) {
         return;
       }
 
@@ -347,16 +418,17 @@ class RoomController {
 
       const latestState = await redisClient.hgetall(`room:${roomId}`);
       const members = await this.getRoomMembers(roomId);
+      const payloadToRequester = this.buildRoomJoinedPayload(
+        latestState,
+        roomId,
+        members,
+        Date.now(),
+      );
 
       requesterWs.send(
         JSON.stringify({
           type: MESSAGE_TYPES.ROOM_JOINED,
-          payload: {
-            ...latestState,
-            roomId,
-            members,
-            serverTime: Date.now(),
-          },
+          payload: payloadToRequester,
         }),
       );
 
@@ -484,16 +556,17 @@ class RoomController {
 
       const state = await redisClient.hgetall(`room:${roomId}`);
       const members = await this.getRoomMembers(roomId);
+      const payload = this.buildRoomJoinedPayload(
+        state,
+        roomId,
+        members,
+        Date.now(),
+      );
 
       senderWs.send(
         JSON.stringify({
           type: MESSAGE_TYPES.ROOM_JOINED,
-          payload: {
-            ...state,
-            roomId,
-            members,
-            serverTime: Date.now(),
-          },
+          payload,
         }),
       );
 
@@ -524,31 +597,105 @@ class RoomController {
       return;
     }
 
+    const roomState = await redisClient.hgetall(`room:${roomId}`);
+    const now = Date.now();
+    const currentIsPlaying = this.parseBoolean(roomState?.isPlaying, false);
+    const currentTimestamp = this.getCurrentRoomTimestamp(roomState, now);
+
     switch (action) {
-      case "HANDLE_SONG_PLAY":
-        broadcast(roomId, { type: MESSAGE_TYPES.HANDLE_SONG_PLAY }, senderWs);
+      case "HANDLE_SONG_PLAY": {
+        const actionTime = Date.now();
+        const nextIsPlaying =
+          typeof payload?.isPlaying === "boolean"
+            ? payload.isPlaying
+            : !currentIsPlaying;
+        const nextTimestamp = Math.max(
+          0,
+          this.parseNumber(payload?.timestamp, currentTimestamp),
+        );
+
+        await redisClient.hset(`room:${roomId}`, {
+          isPlaying: String(nextIsPlaying),
+          timestamp: String(nextTimestamp),
+          updatedAt: String(actionTime),
+        });
+
+        broadcast(
+          roomId,
+          {
+            type: MESSAGE_TYPES.HANDLE_SONG_PLAY,
+            payload: {
+              isPlaying: nextIsPlaying,
+              timestamp: nextTimestamp,
+              serverTime: actionTime,
+            },
+          },
+          senderWs,
+        );
         break;
-      case "PLAY_SONG":
+      }
+      case "PLAY_SONG": {
+        if (!payload?.songId) {
+          console.warn("PLAY_SONG called without songId");
+          break;
+        }
+        const actionTime = Date.now();
+        const nextIsPlaying =
+          typeof payload?.isPlaying === "boolean" ? payload.isPlaying : true;
+        const nextTimestamp = Math.max(
+          0,
+          this.parseNumber(payload?.timestamp, 0),
+        );
+
+        await redisClient.hset(`room:${roomId}`, {
+          songId: payload.songId,
+          isPlaying: String(nextIsPlaying),
+          timestamp: String(nextTimestamp),
+          updatedAt: String(actionTime),
+        });
+
         broadcast(
           roomId,
           {
             type: MESSAGE_TYPES.PLAY_SONG,
-            payload: { songId: payload.songId },
+            payload: {
+              songId: payload.songId,
+              isPlaying: nextIsPlaying,
+              timestamp: nextTimestamp,
+              serverTime: actionTime,
+            },
           },
           senderWs,
         );
         break;
+      }
 
-      case "SEEK":
+      case "SEEK": {
+        const actionTime = Date.now();
+        const nextTimestamp = Math.max(
+          0,
+          this.parseNumber(payload?.timestamp, currentTimestamp),
+        );
+
+        await redisClient.hset(`room:${roomId}`, {
+          timestamp: String(nextTimestamp),
+          updatedAt: String(actionTime),
+        });
+
         broadcast(
           roomId,
           {
             type: MESSAGE_TYPES.SEEK,
-            payload: { musicSeekTime: payload.musicSeekTime },
+            payload: {
+              musicSeekTime: payload.musicSeekTime,
+              timestamp: nextTimestamp,
+              serverTime: actionTime,
+            },
           },
           senderWs,
         );
         break;
+      }
 
       case "SEND_CHAT":
         broadcast(
