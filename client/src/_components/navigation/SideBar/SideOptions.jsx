@@ -26,6 +26,7 @@ const SideOptions = () => {
   } = useSWR(isAuthenticated ? "user-playlists" : null, () =>
     tuneMateInstance.getPlaylists(),
   );
+  const safePlaylists = Array.isArray(playlists) ? playlists : [];
 
   if (error) return <ApiError />;
 
@@ -156,7 +157,7 @@ const SideOptions = () => {
               transition={{ staggerChildren: 0.05 }}
               className="space-y-1"
             >
-              {playlists?.map((playlist, index) => (
+              {safePlaylists.map((playlist, index) => (
                 <motion.div
                   key={playlist.id}
                   initial={{ opacity: 0, x: -20 }}
@@ -171,7 +172,7 @@ const SideOptions = () => {
         </AnimatePresence>
 
         {/* Empty State */}
-        {!isLoading && playlists?.length === 0 && !collapse && (
+        {!isLoading && safePlaylists.length === 0 && !collapse && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

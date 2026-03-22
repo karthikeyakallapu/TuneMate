@@ -292,10 +292,12 @@ const usePlayerStore = create(
       getFavorites: async () => {
         try {
           const data = await tuneMateInstance.getFavorites();
-          const Favorites = data.map((item) => item.id);
+          const safeFavorites = Array.isArray(data) ? data : [];
+          const Favorites = safeFavorites.map((item) => item.id);
           set({ Favorites });
         } catch (error) {
           console.error("Error fetching favorites", error.message);
+          set({ Favorites: [] });
         }
       },
 

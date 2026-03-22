@@ -31,7 +31,7 @@ class TuneMateService {
       const response = await tuneMateClient.get(ENDPOINTS.getPlaylists);
       return response.data.playlists;
     } catch (err) {
-      return err;
+      throw err;
     }
   };
 
@@ -127,7 +127,7 @@ class TuneMateService {
       const response = await tuneMateClient.get(ENDPOINTS.favorites);
       return response.data.favorites;
     } catch (err) {
-      return err;
+      throw err;
     }
   };
 
@@ -147,7 +147,7 @@ class TuneMateService {
       const response = await tuneMateClient.get(ENDPOINTS.loadPlayerState);
       return response.data;
     } catch (err) {
-      return err;
+      throw err;
     }
   };
   getUserSongHistory = async () => {
@@ -155,7 +155,7 @@ class TuneMateService {
       const response = await tuneMateClient.get(ENDPOINTS.getUserSongHistory);
       return response.data.history;
     } catch (err) {
-      return err;
+      throw err;
     }
   };
 
@@ -220,7 +220,7 @@ class TuneMateService {
       const response = await tuneMateClient.get(ENDPOINTS.playlist(id));
       return response.data.playlist[0];
     } catch (err) {
-      return err;
+      throw err;
     }
   };
 
@@ -229,7 +229,7 @@ class TuneMateService {
       const response = await tuneMateClient.get(ENDPOINTS.recommended);
       return response.data;
     } catch (err) {
-      return err;
+      throw err;
     }
   };
 
@@ -240,7 +240,7 @@ class TuneMateService {
       );
       return response.data.playlist[0];
     } catch (err) {
-      return err;
+      throw err;
     }
   };
 
