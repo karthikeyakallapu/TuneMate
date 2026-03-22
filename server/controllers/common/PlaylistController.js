@@ -15,7 +15,7 @@ export const PlaylistController = () => {
           }
         });
 
-        const tuneMateUpdates = await prisma.TuneMateUpdates.findMany({
+        const tuneMateUpdates = await prisma.tuneMateUpdates.findMany({
           select: {
             title: true,
             Content: true
@@ -27,7 +27,13 @@ export const PlaylistController = () => {
           tuneMateUpdates
         });
       } catch (err) {
-        console.log(err);
+        console.error("Error in getRecommended:", err);
+        return res.status(500).json({
+          data: {
+            message: "Failed to load recommended playlists.",
+            type: "error"
+          }
+        });
       }
     },
     async createRecommended(req, res) {
@@ -58,7 +64,10 @@ export const PlaylistController = () => {
           .status(201)
           .json({ data: { message: "Playlist Created", type: "success" } });
       } catch (err) {
-        console.log(err);
+        console.error("Error in createRecommended:", err);
+        return res.status(500).json({
+          data: { message: "Failed to create playlist.", type: "error" }
+        });
       }
     },
     async addSongToRecommended(req, res) {
@@ -96,8 +105,11 @@ export const PlaylistController = () => {
         });
       } catch (error) {
         console.error("Error saving song to playlists:", error);
-        res.status(500).json({
-          message: "An error occurred while adding the song to playlists"
+        return res.status(500).json({
+          data: {
+            message: "An error occurred while adding the song to playlists",
+            type: "error"
+          }
         });
       }
     },
@@ -138,7 +150,10 @@ export const PlaylistController = () => {
           }
         });
       } catch (err) {
-        console.log(err);
+        console.error("Error in removeSongFromRecommended:", err);
+        return res.status(500).json({
+          data: { message: "Failed to remove song.", type: "error" }
+        });
       }
     },
     async getRecommendedSongs(req, res) {
@@ -156,12 +171,15 @@ export const PlaylistController = () => {
           (a, b) => new Date(b.addedAt) - new Date(a.addedAt)
         );
 
-        if (!playlist)
+        if (!playlist || playlist.length === 0)
           return res.status(404).json({ message: "Playlist not found" });
 
         return res.status(200).json({ playlist: playlist });
       } catch (err) {
-        console.log(err);
+        console.error("Error in getRecommendedSongs:", err);
+        return res.status(500).json({
+          data: { message: "Failed to load playlist songs.", type: "error" }
+        });
       }
     }
   };
