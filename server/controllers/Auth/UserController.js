@@ -6,7 +6,7 @@ import { EmailHelper } from "./EmailHelper.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
-const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || "15m";
+const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || "24h";
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || "7d";
 const REFRESH_TOKEN_COOKIE_NAME =
   process.env.REFRESH_TOKEN_COOKIE_NAME || "refreshToken";
