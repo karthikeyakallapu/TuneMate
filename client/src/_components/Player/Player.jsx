@@ -18,6 +18,89 @@ import tuneMateInstance from "@/service/api/api";
 import MusicControls from "./MusicControls";
 import FloatingMessage from "./FloatingMessage";
 
+const hasMediaSessionSupport = () =>
+  typeof navigator !== "undefined" && "mediaSession" in navigator;
+
+const getSongTitle = (song) => {
+  if (typeof song?.name === "string" && song.name.trim()) {
+    return song.name;
+  }
+
+  if (typeof song?.title === "string" && song.title.trim()) {
+    return song.title;
+  }
+
+  return "Unknown track";
+};
+
+const getSongArtist = (song) => {
+  if (Array.isArray(song?.artists?.primary) && song.artists.primary.length > 0) {
+    return song.artists.primary
+      .map((artist) => artist?.name)
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  if (typeof song?.primaryArtists === "string" && song.primaryArtists.trim()) {
+    return song.primaryArtists;
+  }
+
+  if (typeof song?.artist === "string" && song.artist.trim()) {
+    return song.artist;
+  }
+
+  if (typeof song?.artists === "string" && song.artists.trim()) {
+    return song.artists;
+  }
+
+  return "Unknown artist";
+};
+
+const getSongAlbum = (song) => {
+  if (typeof song?.album?.name === "string" && song.album.name.trim()) {
+    return song.album.name;
+  }
+
+  if (typeof song?.album === "string" && song.album.trim()) {
+    return song.album;
+  }
+
+  return "TuneMate";
+};
+
+const getSongArtwork = (song) => {
+  const artworkUrls = [];
+
+  if (Array.isArray(song?.image)) {
+    song.image.forEach((artwork) => {
+      if (typeof artwork === "string" && artwork.trim()) {
+        artworkUrls.push(artwork);
+        return;
+      }
+
+      if (typeof artwork?.url === "string" && artwork.url.trim()) {
+        artworkUrls.push(artwork.url);
+      }
+    });
+  }
+
+  if (typeof song?.imageUrl === "string" && song.imageUrl.trim()) {
+    artworkUrls.push(song.imageUrl);
+  }
+
+  if (typeof song?.albumArt === "string" && song.albumArt.trim()) {
+    artworkUrls.push(song.albumArt);
+  }
+
+  const sizeHints = ["96x96", "128x128", "192x192", "256x256", "384x384", "512x512"];
+  const uniqueArtworkUrls = [...new Set(artworkUrls)];
+
+  return uniqueArtworkUrls.slice(0, sizeHints.length).map((src, index) => ({
+    src,
+    sizes: sizeHints[index] || "512x512",
+  }));
+};
+
 const Player = () => {
   const {
     song,
@@ -29,6 +112,8 @@ const Player = () => {
     setMusicSeekTime,
     seekToTimestamp,
     setIsPlaying,
+    playNext,
+    playPrevious,
   } = usePlayerStore();
 
   const { isAuthenticated, userId } = useAuthStore();
@@ -385,6 +470,222 @@ const Player = () => {
   useEffect(() => {
     handleAudioPlay(false, false);
   }, [handleAudioPlay]);
+
+  const syncMediaSessionPositionState = useCallback(() => {
+    if (!hasMediaSessionSupport()) return;
+
+    const audioElement = AudioRef.current;
+    if (!audioElement) return;
+
+    const duration = Number(audioElement.duration);
+    const position = Number(audioElement.currentTime || 0);
+    const playbackRate = Number(audioElement.playbackRate || 1);
+
+    if (
+      !Number.isFinite(duration) ||
+      duration <= 0 ||
+      typeof navigator.mediaSession.setPositionState !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      navigator.mediaSession.setPositionState({
+        duration,
+        playbackRate:
+          Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1,
+        position: Math.min(Math.max(0, position), duration),
+      });
+    } catch (error) {
+      // Some browsers throw when position state is unsupported.
+    }
+  }, [AudioRef]);
+
+  useEffect(() => {
+    if (!hasMediaSessionSupport()) return;
+
+    const mediaSession = navigator.mediaSession;
+    const audioElement = AudioRef.current;
+
+    const syncPlaybackState = () => {
+      try {
+        mediaSession.playbackState =
+          audioElement && !audioElement.paused ? "playing" : "paused";
+      } catch (error) {
+        // Older browsers may not support playbackState updates.
+      }
+    };
+
+    if (!song) {
+      mediaSession.metadata = null;
+      syncPlaybackState();
+      return;
+    }
+
+    const metadata = {
+      title: getSongTitle(song),
+      artist: getSongArtist(song),
+      album: getSongAlbum(song),
+      artwork: getSongArtwork(song),
+    };
+
+    try {
+      if (typeof window !== "undefined" && "MediaMetadata" in window) {
+        mediaSession.metadata = new window.MediaMetadata(metadata);
+      } else {
+        mediaSession.metadata = null;
+      }
+    } catch (error) {
+      mediaSession.metadata = null;
+    }
+
+    syncPlaybackState();
+    syncMediaSessionPositionState();
+
+    if (!audioElement) return;
+
+    const syncAllMediaSessionState = () => {
+      syncPlaybackState();
+      syncMediaSessionPositionState();
+    };
+
+    audioElement.addEventListener("play", syncAllMediaSessionState);
+    audioElement.addEventListener("pause", syncAllMediaSessionState);
+    audioElement.addEventListener("timeupdate", syncMediaSessionPositionState);
+    audioElement.addEventListener(
+      "loadedmetadata",
+      syncMediaSessionPositionState,
+    );
+    audioElement.addEventListener("ratechange", syncMediaSessionPositionState);
+
+    return () => {
+      audioElement.removeEventListener("play", syncAllMediaSessionState);
+      audioElement.removeEventListener("pause", syncAllMediaSessionState);
+      audioElement.removeEventListener(
+        "timeupdate",
+        syncMediaSessionPositionState,
+      );
+      audioElement.removeEventListener(
+        "loadedmetadata",
+        syncMediaSessionPositionState,
+      );
+      audioElement.removeEventListener(
+        "ratechange",
+        syncMediaSessionPositionState,
+      );
+    };
+  }, [AudioRef, song, syncMediaSessionPositionState]);
+
+  useEffect(() => {
+    if (!hasMediaSessionSupport()) return;
+
+    const mediaSession = navigator.mediaSession;
+    const mediaSessionActions = [
+      "play",
+      "pause",
+      "previoustrack",
+      "nexttrack",
+      "seekbackward",
+      "seekforward",
+      "seekto",
+      "stop",
+    ];
+
+    const setActionHandler = (action, handler) => {
+      try {
+        mediaSession.setActionHandler(action, handler);
+      } catch (error) {
+        // Skip unsupported actions on this browser.
+      }
+    };
+
+    const seekToTime = (targetTime) => {
+      const audioElement = AudioRef.current;
+      if (!audioElement || !Number.isFinite(targetTime)) return;
+
+      const duration = Number(audioElement.duration);
+      const safeTargetTime =
+        Number.isFinite(duration) && duration > 0
+          ? Math.min(Math.max(0, targetTime), duration)
+          : Math.max(0, targetTime);
+
+      if (Number.isFinite(duration) && duration > 0) {
+        setMusicSeekTime((safeTargetTime / duration) * 100);
+      } else {
+        seekToTimestamp(safeTargetTime);
+      }
+
+      syncMediaSessionPositionState();
+    };
+
+    setActionHandler("play", () => {
+      const audioElement = AudioRef.current;
+      if (audioElement?.paused) {
+        handleAudioPlay();
+      }
+    });
+
+    setActionHandler("pause", () => {
+      const audioElement = AudioRef.current;
+      if (audioElement && !audioElement.paused) {
+        handleAudioPlay();
+      }
+    });
+
+    setActionHandler("previoustrack", () => {
+      void playPrevious();
+    });
+
+    setActionHandler("nexttrack", () => {
+      void playNext();
+    });
+
+    setActionHandler("seekbackward", (details) => {
+      const audioElement = AudioRef.current;
+      if (!audioElement) return;
+
+      const seekOffset = Number(details?.seekOffset) || 10;
+      seekToTime(Number(audioElement.currentTime || 0) - seekOffset);
+    });
+
+    setActionHandler("seekforward", (details) => {
+      const audioElement = AudioRef.current;
+      if (!audioElement) return;
+
+      const seekOffset = Number(details?.seekOffset) || 10;
+      seekToTime(Number(audioElement.currentTime || 0) + seekOffset);
+    });
+
+    setActionHandler("seekto", (details) => {
+      const seekTime = Number(details?.seekTime);
+      if (!Number.isFinite(seekTime)) return;
+      seekToTime(seekTime);
+    });
+
+    setActionHandler("stop", () => {
+      const audioElement = AudioRef.current;
+      if (!audioElement) return;
+
+      if (!audioElement.paused) {
+        handleAudioPlay();
+      }
+      seekToTime(0);
+    });
+
+    return () => {
+      mediaSessionActions.forEach((action) => {
+        setActionHandler(action, null);
+      });
+    };
+  }, [
+    AudioRef,
+    handleAudioPlay,
+    playNext,
+    playPrevious,
+    seekToTimestamp,
+    setMusicSeekTime,
+    syncMediaSessionPositionState,
+  ]);
 
   useEffect(() => {
     return () => {
