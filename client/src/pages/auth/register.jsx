@@ -140,7 +140,7 @@ const Register = ({ setShowDetails }) => {
       transition={{ duration: 0.3 }}
       className="flex items-center justify-center"
     >
-      <div className="flex flex-col w-full max-w-md p-6">
+      <div className="flex flex-col  w-full md:w-[30rem] p-6">
         {/* Header */}
         <div className="text-center mb-6">
           <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">

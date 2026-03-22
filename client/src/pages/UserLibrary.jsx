@@ -1,6 +1,7 @@
 import Wrapper from "./Wrapper";
 import BlockWrapper from "@/_components/Wrappers/BlockWrapper";
 import ApiError from "@/_components/Error/ApiError";
+import AuthSessionExpired from "@/_components/Error/AuthSessionExpired";
 import tuneMateInstance from "@/service/api/api";
 import useSWR from "swr";
 import useAuthStore from "@/store/use-auth";
@@ -14,6 +15,7 @@ import { LazyLoadImage } from "react-lazy-load-image-component";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { isAxiosErrorLike, isUnauthorizedError } from "@/utils/authError";
 
 const UserLibrary = () => {
   const { isAuthenticated } = useAuthStore();
@@ -23,11 +25,20 @@ const UserLibrary = () => {
     data: playlists,
     error,
     isLoading,
+    mutate,
   } = useSWR(isAuthenticated ? "user-playlists" : null, () =>
     tuneMateInstance.getPlaylists(),
   );
 
-  if (error) return <ApiError />;
+  const requestError =
+    error || (isAxiosErrorLike(playlists) ? playlists : null);
+  if (requestError) {
+    if (isUnauthorizedError(requestError)) {
+      return <AuthSessionExpired onRetry={() => mutate()} />;
+    }
+
+    return <ApiError />;
+  }
 
   const quickAccessItems = [
     {

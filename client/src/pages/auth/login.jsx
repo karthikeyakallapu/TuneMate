@@ -1,5 +1,5 @@
 import useFormData from "@/hooks/useFormData.js";
-import tuneMateInstance, { tuneMateClient } from "@/service/api/api.js";
+import tuneMateInstance from "@/service/api/api.js";
 import Toast from "@/utils/Toasts/Toast.js";
 import { useState } from "react";
 import Register from "@/pages/auth/register.jsx";
@@ -12,12 +12,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 
 const Login = () => {
-  const { isOpen, closeModal } = useModalStore();
+  const { closeModal } = useModalStore();
   const [showDetails, setShowDetails] = useState("login");
   const [showPassword, setShowPassword] = useState(false);
   const { setAccessToken } = useAuthStore();
   
-  const { data, handleChange, handleSubmit, isLoading, resetData, error } =
+  const { data, handleChange, handleSubmit, isLoading, resetData } =
     useFormData(
       {
         email: "",
@@ -52,10 +52,15 @@ const Login = () => {
       
       if (response?.data) {
         if (response.data.accessToken) {
-          setAccessToken(response.data.accessToken);
-          tuneMateClient.defaults.headers[
-            "Authorization"
-          ] = `Bearer ${response.data.accessToken}`;
+          const didSetToken = setAccessToken(response.data.accessToken);
+          if (!didSetToken) {
+            Toast({
+              type: "error",
+              message: "Session token is invalid. Please try logging in again.",
+            });
+            return;
+          }
+
           closeModal();
           Toast({ 
             type: "success", 
@@ -95,7 +100,7 @@ const Login = () => {
             transition={{ duration: 0.3 }}
             className="flex items-center justify-center"
           >
-            <div className="flex flex-col w-full max-w-md p-6">
+            <div className="flex flex-col w-full md:w-[30rem] p-6">
               {/* Header */}
               <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">

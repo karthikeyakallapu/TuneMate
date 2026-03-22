@@ -1,10 +1,10 @@
 import useAuthStore from "@/store/use-auth.js";
+import tuneMateInstance from "@/service/api/api.js";
 import { LogOut } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import useSearchStore from "@/store/use-search.js";
 import { FiSearch } from "react-icons/fi";
 import { IoClose } from "react-icons/io5";
-import UserLogo from "@/assets/images/user.png";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useMediaQuery } from "usehooks-ts";
 import { MdLogin } from "react-icons/md";
@@ -32,9 +32,12 @@ const NavBar = () => {
 
   const handleLogout = async () => {
     try {
-      // Optional: Call logout API if needed
-      // await tuneMateInstance.logout();
-      removeAccessToken();
+      await tuneMateInstance.logoutUser();
+      await removeAccessToken({
+        reason: "manual",
+        showToast: false,
+        openLoginModal: false,
+      });
       navigate("/");
     } catch (error) {
       console.error("Logout error:", error);

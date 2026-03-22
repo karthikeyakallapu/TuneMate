@@ -35,6 +35,8 @@ import useDropDownStore from "@/store/use-dropDownStore";
 import UserPlayListModifyOptions from "@/_components/Options/UserPlayListModifyOptions";
 import AddToPlaylist from "@/_components/Options/AddToPlaylist.jsx";
 import { cn } from "@/lib/utils";
+import AuthSessionExpired from "@/_components/Error/AuthSessionExpired";
+import { isAxiosErrorLike, isUnauthorizedError } from "@/utils/authError";
 
 const UserPlaylists = () => {
   const { id } = useParams();
@@ -79,6 +81,8 @@ const UserPlaylists = () => {
         ? tuneMateInstance.getRecommendedPlaylist(id)
         : tuneMateInstance.getUserPlaylist(id),
   );
+  const requestError =
+    error || (isAxiosErrorLike(single_playlist) ? single_playlist : null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -114,7 +118,15 @@ const UserPlaylists = () => {
     }
   };
 
-  if (error) {
+  if (requestError) {
+    if (isUnauthorizedError(requestError)) {
+      return (
+        <Wrapper>
+          <AuthSessionExpired onRetry={() => mutate()} />
+        </Wrapper>
+      );
+    }
+
     return (
       <Wrapper>
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507] flex items-center justify-center">

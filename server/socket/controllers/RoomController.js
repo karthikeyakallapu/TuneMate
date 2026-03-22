@@ -137,6 +137,25 @@ class RoomController {
     });
   }
 
+  async emitToRoomMembers(roomId, message, excludeUserId = null) {
+    if (!roomId || !message) return;
+
+    const members = await this.getRoomMembers(roomId);
+    const emitTasks = members
+      .filter((member) => {
+        if (!member?.userId) return false;
+        if (excludeUserId && member.userId === excludeUserId) return false;
+        return true;
+      })
+      .map((member) => this.emitToUser(member.userId, message));
+
+    if (emitTasks.length === 0) {
+      return;
+    }
+
+    await Promise.allSettled(emitTasks);
+  }
+
   async isUserOnline(userId) {
     if (!userId) return false;
     const wsId = await redisClient.hget("user:wsid", userId);
@@ -294,7 +313,7 @@ class RoomController {
           type: MESSAGE_TYPES.ROOM_JOINED,
           payload,
         });
-        await this.emitToRoom(roomId, {
+        await this.emitToRoomMembers(roomId, {
           type: MESSAGE_TYPES.MEMBERS_UPDATED,
           payload: { members, roomId },
         });
@@ -429,7 +448,7 @@ class RoomController {
         payload: payloadToRequester,
       });
 
-      await this.emitToRoom(roomId, {
+      await this.emitToRoomMembers(roomId, {
         type: MESSAGE_TYPES.MEMBERS_UPDATED,
         payload: { members, roomId },
       });
@@ -502,7 +521,7 @@ class RoomController {
       });
 
       const members = await this.getRoomMembers(roomId);
-      await this.emitToRoom(roomId, {
+      await this.emitToRoomMembers(roomId, {
         type: MESSAGE_TYPES.MEMBERS_UPDATED,
         payload: { members, roomId },
       });
@@ -689,22 +708,24 @@ class RoomController {
     }
   }
 
-  async leaveRoom(payload, socketUserId = null) {
+  async leaveRoom(payload, socketUserId = null, options = {}) {
     try {
       const { roomId } = payload || {};
       const userId = socketUserId || payload?.userId;
+      const isDisconnect = options?.isDisconnect === true;
       if (!roomId || !userId) return;
 
       const exists = await redisClient.exists(`room:${roomId}`);
       const senderWs = await this.getValidWebSocket(userId);
-      if (!senderWs) return;
 
       if (!exists) {
         await this.removeUserActiveRoom(userId);
-        await this.emitToUser(userId, {
-          type: MESSAGE_TYPES.ERROR,
-          payload: { message: "Room not found" },
-        });
+        if (!isDisconnect) {
+          await this.emitToUser(userId, {
+            type: MESSAGE_TYPES.ERROR,
+            payload: { message: "Room not found" },
+          });
+        }
         return;
       }
 
@@ -722,19 +743,23 @@ class RoomController {
         }
         await this.clearPendingRequestsForRoom(roomId);
 
-        await this.emitToRoom(roomId, {
+        const roomClosedMessage = {
           type: MESSAGE_TYPES.ROOM_CLOSED,
           payload: {
             roomId,
             message: "Room closed by host",
           },
-        });
+        };
+
+        await this.emitToRoomMembers(roomId, roomClosedMessage);
         clearRoom(roomId);
         await redisClient.del(`room:${roomId}`, `room:${roomId}:members`);
         return;
       }
 
-      removeFromRoom(roomId, senderWs);
+      if (senderWs) {
+        removeFromRoom(roomId, senderWs);
+      }
       await redisClient.hdel(`room:${roomId}:members`, userId);
 
       const membersCount = await redisClient.hlen(`room:${roomId}:members`);
@@ -745,18 +770,49 @@ class RoomController {
       } else {
         // broadcast updated member list to remaining users
         const members = await this.getRoomMembers(roomId);
-        await this.emitToRoom(roomId, {
+        await this.emitToRoomMembers(roomId, {
           type: MESSAGE_TYPES.MEMBERS_UPDATED,
           payload: { members, roomId },
         });
       }
 
-      await this.emitToUser(userId, {
-        type: MESSAGE_TYPES.ROOM_LEFT,
-        payload: { roomId },
-      });
+      if (!isDisconnect) {
+        await this.emitToUser(userId, {
+          type: MESSAGE_TYPES.ROOM_LEFT,
+          payload: { roomId },
+        });
+      }
     } catch (error) {
       console.error("Failed to leave room:", error);
+    }
+  }
+
+  async handleSocketDisconnect(userId, expectedWsId = null) {
+    try {
+      if (!userId) return;
+      const activeWsId = await redisClient.hget("user:wsid", userId);
+
+      if (
+        expectedWsId &&
+        activeWsId &&
+        String(activeWsId) !== String(expectedWsId)
+      ) {
+        return;
+      }
+
+      const activeRoomId = await this.getUserActiveRoom(userId);
+      if (!activeRoomId) {
+        await this.removeUserActiveRoom(userId);
+        return;
+      }
+
+      await this.leaveRoom(
+        { roomId: activeRoomId, userId },
+        userId,
+        { isDisconnect: true },
+      );
+    } catch (error) {
+      console.error("Failed to handle socket disconnect:", error);
     }
   }
 }

@@ -7,6 +7,7 @@ const token = Cookies.get("accessToken");
 
 export const tuneMateClient = axios.create({
   baseURL,
+  withCredentials: true,
   headers: {
     Authorization: token ? `Bearer ${token}` : undefined,
   },
@@ -55,6 +56,33 @@ class TuneMateService {
   forgotPassword = async (data) => {
     try {
       const response = await tuneMateClient.post(ENDPOINTS.forgot, data);
+      return response.data;
+    } catch (err) {
+      return err;
+    }
+  };
+
+  verifyEmail = async (data) => {
+    try {
+      const response = await tuneMateClient.post(ENDPOINTS.verifyEmail, data);
+      return response.data;
+    } catch (err) {
+      return err;
+    }
+  };
+
+  refreshToken = async () => {
+    try {
+      const response = await tuneMateClient.post(ENDPOINTS.refreshToken);
+      return response.data;
+    } catch (err) {
+      return err;
+    }
+  };
+
+  logoutUser = async () => {
+    try {
+      const response = await tuneMateClient.post(ENDPOINTS.logout);
       return response.data;
     } catch (err) {
       return err;

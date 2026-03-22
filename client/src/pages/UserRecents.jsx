@@ -13,6 +13,8 @@ import BlockWrapper from "@/_components/Wrappers/BlockWrapper";
 import { LazyLoadImage } from "react-lazy-load-image-component";
 import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import AuthSessionExpired from "@/_components/Error/AuthSessionExpired";
+import { isAxiosErrorLike, isUnauthorizedError } from "@/utils/authError";
 
 const UserRecents = () => {
   const { hoveredItemId, handleMouseEnter, handleMouseLeave } = useHover();
@@ -24,8 +26,11 @@ const UserRecents = () => {
   const {
     data: songHistory,
     error,
-    isLoading
+    isLoading,
+    mutate,
   } = useSWR("user-recents", () => tuneMateInstance.getUserSongHistory());
+  const requestError =
+    error || (isAxiosErrorLike(songHistory) ? songHistory : null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -39,7 +44,15 @@ const UserRecents = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  if (error) {
+  if (requestError) {
+    if (isUnauthorizedError(requestError)) {
+      return (
+        <Wrapper>
+          <AuthSessionExpired onRetry={() => mutate()} />
+        </Wrapper>
+      );
+    }
+
     return (
       <Wrapper>
         <div className="min-h-screen bg-gradient-to-b from-[#0a0a0f] to-[#050507] flex items-center justify-center">

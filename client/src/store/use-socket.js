@@ -1,5 +1,25 @@
 import { create } from "zustand";
 
+const toWebSocketUrl = (url) => {
+  if (!url || typeof url !== "string") {
+    return "";
+  }
+
+  if (url.startsWith("ws://") || url.startsWith("wss://")) {
+    return url;
+  }
+
+  if (url.startsWith("http://")) {
+    return url.replace("http://", "ws://");
+  }
+
+  if (url.startsWith("https://")) {
+    return url.replace("https://", "wss://");
+  }
+
+  return url;
+};
+
 const useWebSocketStore = create((set, get) => ({
   socket: null,
   connected: false,
@@ -30,8 +50,10 @@ const useWebSocketStore = create((set, get) => ({
       return;
     }
 
-    const baseURL = import.meta.env.VITE_SOCKET_SERVER_URL;
-    const socket = new WebSocket(`${baseURL}?userId=${userId}`);
+    const baseURL = toWebSocketUrl(import.meta.env.VITE_SOCKET_SERVER_URL);
+    const socket = new WebSocket(
+      `${baseURL}?userId=${encodeURIComponent(userId)}`,
+    );
     socket.onopen = () => {
       set({ connected: true, socket });
       // Server will auto-rejoin room if user has an active one

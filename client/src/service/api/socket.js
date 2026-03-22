@@ -1,5 +1,5 @@
 import axios from "axios";
-import { ENDPOINTS } from "../endpoints/API_ENDPOINTS";
+import { ENDPOINTS } from "../endpoints/API_ENDPOINTS.js";
 import Cookies from "js-cookie";
 
 const baseURL = import.meta.env.VITE_SOCKET_SERVER_URL;
@@ -7,6 +7,7 @@ const token = Cookies.get("accessToken");
 
 export const socketClient = axios.create({
   baseURL,
+  withCredentials: true,
   headers: {
     Authorization: token ? `Bearer ${token}` : undefined,
   },

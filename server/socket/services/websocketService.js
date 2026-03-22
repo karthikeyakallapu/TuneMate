@@ -30,6 +30,9 @@ export const startWebSocketServer = async (server) => {
     });
 
     ws.on("close", async () => {
+      if (clientId) {
+        await RoomControllerInstance.handleSocketDisconnect(clientId, ws.wsId);
+      }
       await removeConnection(clientId, ws.wsId);
       removeSocketFromAllRooms(ws);
     });

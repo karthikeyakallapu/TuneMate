@@ -26,6 +26,8 @@ model User {
   verificationTokenExpiry DateTime?
   resetToken              String?
   resetTokenExpiry        DateTime?
+  refreshTokenHash        String?
+  refreshTokenExpiry      DateTime?
   playlists               Playlist[]
   favorites               Favorites[]
   history                 History[]
