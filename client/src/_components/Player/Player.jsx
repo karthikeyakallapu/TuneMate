@@ -114,6 +114,8 @@ const Player = () => {
     setIsPlaying,
     playNext,
     playPrevious,
+    playlist,
+    currentSongIndex,
   } = usePlayerStore();
 
   const { isAuthenticated, userId } = useAuthStore();
@@ -580,6 +582,13 @@ const Player = () => {
     if (!hasMediaSessionSupport()) return;
 
     const mediaSession = navigator.mediaSession;
+    const songs = Array.isArray(playlist?.songs) ? playlist.songs : [];
+    const hasMultipleTracks = songs.length > 1;
+    const hasPreviousTrack = hasMultipleTracks && Number(currentSongIndex) > 0;
+    const hasNextTrack =
+      hasMultipleTracks &&
+      Number(currentSongIndex) >= 0 &&
+      Number(currentSongIndex) < songs.length - 1;
     const mediaSessionActions = [
       "play",
       "pause",
@@ -632,29 +641,44 @@ const Player = () => {
       }
     });
 
-    setActionHandler("previoustrack", () => {
-      void playPrevious();
-    });
+    // On mobile lock screens, registering seekbackward/seekforward often replaces
+    // previous/next buttons with 10s jump controls. Prefer track navigation when
+    // playlist context exists.
+    if (hasMultipleTracks) {
+      setActionHandler("previoustrack", () => {
+        if (hasPreviousTrack) {
+          void playPrevious();
+        }
+      });
 
-    setActionHandler("nexttrack", () => {
-      void playNext();
-    });
+      setActionHandler("nexttrack", () => {
+        if (hasNextTrack) {
+          void playNext();
+        }
+      });
 
-    setActionHandler("seekbackward", (details) => {
-      const audioElement = AudioRef.current;
-      if (!audioElement) return;
+      setActionHandler("seekbackward", null);
+      setActionHandler("seekforward", null);
+    } else {
+      setActionHandler("previoustrack", null);
+      setActionHandler("nexttrack", null);
 
-      const seekOffset = Number(details?.seekOffset) || 10;
-      seekToTime(Number(audioElement.currentTime || 0) - seekOffset);
-    });
+      setActionHandler("seekbackward", (details) => {
+        const audioElement = AudioRef.current;
+        if (!audioElement) return;
 
-    setActionHandler("seekforward", (details) => {
-      const audioElement = AudioRef.current;
-      if (!audioElement) return;
+        const seekOffset = Number(details?.seekOffset) || 10;
+        seekToTime(Number(audioElement.currentTime || 0) - seekOffset);
+      });
 
-      const seekOffset = Number(details?.seekOffset) || 10;
-      seekToTime(Number(audioElement.currentTime || 0) + seekOffset);
-    });
+      setActionHandler("seekforward", (details) => {
+        const audioElement = AudioRef.current;
+        if (!audioElement) return;
+
+        const seekOffset = Number(details?.seekOffset) || 10;
+        seekToTime(Number(audioElement.currentTime || 0) + seekOffset);
+      });
+    }
 
     setActionHandler("seekto", (details) => {
       const seekTime = Number(details?.seekTime);
@@ -679,7 +703,9 @@ const Player = () => {
     };
   }, [
     AudioRef,
+    currentSongIndex,
     handleAudioPlay,
+    playlist,
     playNext,
     playPrevious,
     seekToTimestamp,
