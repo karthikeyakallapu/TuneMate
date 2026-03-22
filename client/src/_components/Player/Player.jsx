@@ -104,6 +104,7 @@ const getSongArtwork = (song) => {
 const Player = () => {
   const {
     song,
+    isPlaying,
     getFavorites,
     loadPlayerState,
     AudioRef,
@@ -472,6 +473,30 @@ const Player = () => {
   useEffect(() => {
     handleAudioPlay(false, false);
   }, [handleAudioPlay]);
+
+  useEffect(() => {
+    const audioElement = AudioRef.current;
+    if (!audioElement || !song?.id || !isPlaying) {
+      return;
+    }
+
+    if (!audioElement.paused) {
+      return;
+    }
+
+    const resumePlayback = async () => {
+      try {
+        await audioElement.play();
+      } catch (error) {
+        if (!isAutoplayBlockedError(error)) {
+          console.error("Failed to resume playback after track change:", error);
+        }
+        setIsPlaying(false);
+      }
+    };
+
+    void resumePlayback();
+  }, [AudioRef, isAutoplayBlockedError, isPlaying, setIsPlaying, song?.id]);
 
   const syncMediaSessionPositionState = useCallback(() => {
     if (!hasMediaSessionSupport()) return;
