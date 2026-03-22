@@ -404,17 +404,37 @@ export const UserController = () => {
           });
         }
 
+        const incomingRefreshTokenHash = hashToken(refreshToken);
         const verificationResult = verifyRefreshToken(refreshToken);
         if (!verificationResult.valid) {
+          let shouldClearCookie = true;
+
           if (verificationResult.code === "TOKEN_EXPIRED") {
             const verifiedPayload =
               getVerifiedRefreshPayloadIgnoringExpiry(refreshToken);
+
             if (verifiedPayload?.userid) {
-              await clearRefreshTokenForUser(prisma, verifiedPayload.userid);
+              const userWithTokenState = await prisma.User.findUnique({
+                where: { id: verifiedPayload.userid },
+                select: { refreshTokenHash: true },
+              });
+
+              if (
+                userWithTokenState?.refreshTokenHash &&
+                userWithTokenState.refreshTokenHash === incomingRefreshTokenHash
+              ) {
+                await clearRefreshTokenForUser(prisma, verifiedPayload.userid);
+              } else {
+                // This request likely carries a stale rotated token.
+                shouldClearCookie = false;
+              }
             }
           }
 
-          clearRefreshCookie(res);
+          if (shouldClearCookie) {
+            clearRefreshCookie(res);
+          }
+
           return res.status(401).json({
             data: {
               type: "error",
@@ -470,15 +490,13 @@ export const UserController = () => {
           });
         }
 
-        const incomingRefreshTokenHash = hashToken(refreshToken);
         if (incomingRefreshTokenHash !== user.refreshTokenHash) {
-          await clearRefreshTokenForUser(prisma, user.id);
-          clearRefreshCookie(res);
           return res.status(401).json({
             data: {
               type: "error",
-              code: "AUTH_UNAUTHORIZED",
-              message: "Refresh token mismatch. Please log in again.",
+              code: "AUTH_TOKEN_STALE",
+              message:
+                "Stale refresh token detected. Please retry session refresh.",
             },
           });
         }

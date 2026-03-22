@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
@@ -23,6 +23,12 @@ const isAuthRequest = (url = "") =>
 const shouldHandleUnauthorizedResponse = (statusCode, responseCode) =>
   statusCode === 401 || responseCode === "TOKEN_EXPIRED";
 
+const getApiErrorCode = (error) =>
+  error?.response?.data?.data?.code || error?.response?.data?.code;
+
+const isStaleRefreshTokenError = (error) =>
+  getApiErrorCode(error) === "AUTH_TOKEN_STALE";
+
 const getTokenExpiryMs = (token) => {
   if (!token) {
     return null;
@@ -36,45 +42,92 @@ const getTokenExpiryMs = (token) => {
   }
 };
 
+const REFRESH_REQUEST_HEADERS = { "x-skip-auth-refresh": "1" };
+let refreshInFlightPromise = null;
+
+const performTokenRefreshRequest = async () => {
+  const response = await tuneMateClient.post(ENDPOINTS.refreshToken, null, {
+    headers: REFRESH_REQUEST_HEADERS,
+  });
+  const refreshedToken = response?.data?.data?.accessToken;
+  const didSetToken = useAuthStore.getState().setAccessToken(refreshedToken);
+
+  if (!didSetToken) {
+    throw new Error("Refresh token response did not contain a valid access token.");
+  }
+
+  return refreshedToken;
+};
+
+const refreshSessionToken = async () => {
+  if (!refreshInFlightPromise) {
+    refreshInFlightPromise = (async () => {
+      try {
+        return await performTokenRefreshRequest();
+      } catch (error) {
+        if (isStaleRefreshTokenError(error)) {
+          return await performTokenRefreshRequest();
+        }
+        throw error;
+      }
+    })().finally(() => {
+      refreshInFlightPromise = null;
+    });
+  }
+
+  return refreshInFlightPromise;
+};
+
 function App() {
   const isMobile = useMediaQuery("(max-width: 767px)");
   const { component } = useModalStore();
   const { accessToken, isAuthenticated } = useAuthStore();
+  const [isSessionBootstrapped, setIsSessionBootstrapped] = useState(() => {
+    const state = useAuthStore.getState();
+    return Boolean(state.isAuthenticated && state.accessToken);
+  });
 
   useEffect(() => {
     let isMounted = true;
+    const fallbackBootstrapTimer = window.setTimeout(() => {
+      if (isMounted) {
+        setIsSessionBootstrapped(true);
+      }
+    }, 8000);
 
     const bootstrapSession = async () => {
       const state = useAuthStore.getState();
       if (state.isAuthenticated && state.accessToken) {
+        if (isMounted) {
+          setIsSessionBootstrapped(true);
+        }
         return;
       }
 
       try {
-        const response = await tuneMateClient.post(ENDPOINTS.refreshToken, null, {
-          headers: { "x-skip-auth-refresh": "1" },
-        });
-        const refreshedToken = response?.data?.data?.accessToken;
-
-        if (!isMounted) {
-          return;
-        }
-
-        useAuthStore.getState().setAccessToken(refreshedToken);
+        await refreshSessionToken();
       } catch (error) {
         // Silent failure is expected when refresh cookie doesn't exist
+      } finally {
+        window.clearTimeout(fallbackBootstrapTimer);
+        if (isMounted) {
+          setIsSessionBootstrapped(true);
+        }
       }
     };
 
-    bootstrapSession();
+    if (!isSessionBootstrapped) {
+      void bootstrapSession();
+    }
 
     return () => {
       isMounted = false;
+      window.clearTimeout(fallbackBootstrapTimer);
     };
-  }, []);
+  }, [isSessionBootstrapped]);
 
   useEffect(() => {
-    if (!isAuthenticated || !accessToken) {
+    if (!isSessionBootstrapped || !isAuthenticated || !accessToken) {
       return;
     }
 
@@ -92,57 +145,26 @@ function App() {
 
     const refreshTimeout = window.setTimeout(async () => {
       try {
-        const response = await tuneMateClient.post(ENDPOINTS.refreshToken, null, {
-          headers: { "x-skip-auth-refresh": "1" },
-        });
-        const refreshedToken = response?.data?.data?.accessToken;
-        const didSetToken = useAuthStore.getState().setAccessToken(refreshedToken);
-
-        if (!didSetToken) {
-          throw new Error("Failed to set refreshed token");
-        }
+        await refreshSessionToken();
       } catch (error) {
-        await useAuthStore.getState().removeAccessToken({
-          reason: "expired",
-          showToast: true,
-          openLoginModal: true,
-        });
+        const state = useAuthStore.getState();
+        if (state.isAuthenticated) {
+          await state.removeAccessToken({
+            reason: "expired",
+            showToast: true,
+            openLoginModal: true,
+          });
+        }
       }
     }, delayMs);
 
     return () => {
       window.clearTimeout(refreshTimeout);
     };
-  }, [accessToken, isAuthenticated]);
+  }, [accessToken, isAuthenticated, isSessionBootstrapped]);
 
   useEffect(() => {
-    let refreshInFlightPromise = null;
     const apiClients = [tuneMateClient, socketClient];
-
-    const refreshSession = async () => {
-      if (!refreshInFlightPromise) {
-        refreshInFlightPromise = (async () => {
-          const response = await tuneMateClient.post(ENDPOINTS.refreshToken, null, {
-            headers: { "x-skip-auth-refresh": "1" },
-          });
-
-          const refreshedToken = response?.data?.data?.accessToken;
-          const didSetToken = useAuthStore.getState().setAccessToken(refreshedToken);
-
-          if (!didSetToken) {
-            throw new Error(
-              "Refresh token response did not contain a valid access token.",
-            );
-          }
-
-          return refreshedToken;
-        })().finally(() => {
-          refreshInFlightPromise = null;
-        });
-      }
-
-      return refreshInFlightPromise;
-    };
 
     const requestInterceptorIds = apiClients.map((client) =>
       client.interceptors.request.use(async (config) => {
@@ -155,7 +177,7 @@ function App() {
           return config;
         }
 
-        const token = Cookies.get("accessToken");
+        const token = useAuthStore.getState().accessToken || Cookies.get("accessToken");
         config.headers = config.headers || {};
 
         if (token) {
@@ -186,27 +208,33 @@ function App() {
           }
 
           if (originalRequest._retry) {
-            await useAuthStore.getState().removeAccessToken({
-              reason: "expired",
-              showToast: true,
-              openLoginModal: true,
-            });
+            const state = useAuthStore.getState();
+            if (state.isAuthenticated) {
+              await state.removeAccessToken({
+                reason: "expired",
+                showToast: true,
+                openLoginModal: true,
+              });
+            }
             return Promise.reject(error);
           }
 
           originalRequest._retry = true;
 
           try {
-            const refreshedToken = await refreshSession();
+            const refreshedToken = await refreshSessionToken();
             originalRequest.headers = originalRequest.headers || {};
             originalRequest.headers.Authorization = `Bearer ${refreshedToken}`;
             return client(originalRequest);
           } catch (refreshError) {
-            await useAuthStore.getState().removeAccessToken({
-              reason: "expired",
-              showToast: true,
-              openLoginModal: true,
-            });
+            const state = useAuthStore.getState();
+            if (state.isAuthenticated) {
+              await state.removeAccessToken({
+                reason: "expired",
+                showToast: true,
+                openLoginModal: true,
+              });
+            }
             return Promise.reject(refreshError || error);
           }
         },
@@ -220,6 +248,14 @@ function App() {
       });
     };
   }, []);
+
+  if (!isSessionBootstrapped) {
+    return (
+      <SkeletonTheme baseColor="#202020" highlightColor="#444">
+        <div className="min-h-screen bg-black" />
+      </SkeletonTheme>
+    );
+  }
 
   return (
     <SkeletonTheme baseColor="#202020" highlightColor="#444">

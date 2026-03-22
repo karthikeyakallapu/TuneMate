@@ -40,14 +40,48 @@ const hasTokenExpired = (decodedToken) => {
 
 const getCookie = (cookieName) => Cookies.get(cookieName) || null;
 
+const removeCookieWithFallback = (cookieName) => {
+  Cookies.remove(cookieName, AUTH_COOKIE_OPTIONS);
+  Cookies.remove(cookieName, { path: "/" });
+};
+
 const clearAuthCookies = () => {
-  Cookies.remove("accessToken", { path: "/" });
-  Cookies.remove("role", { path: "/" });
+  removeCookieWithFallback("accessToken");
+  removeCookieWithFallback("role");
+};
+
+const getClientCommonHeaders = (client) => {
+  if (!client.defaults.headers) {
+    client.defaults.headers = {};
+  }
+
+  if (!client.defaults.headers.common) {
+    client.defaults.headers.common = {};
+  }
+
+  return client.defaults.headers.common;
+};
+
+const setClientAuthorizationHeaders = (token) => {
+  const tuneMateHeaders = getClientCommonHeaders(tuneMateClient);
+  const socketHeaders = getClientCommonHeaders(socketClient);
+
+  if (token) {
+    tuneMateHeaders.Authorization = `Bearer ${token}`;
+    socketHeaders.Authorization = `Bearer ${token}`;
+    return;
+  }
+
+  delete tuneMateHeaders.Authorization;
+  delete socketHeaders.Authorization;
+
+  // Keep compatibility with any older assignments.
+  delete tuneMateClient.defaults.headers.Authorization;
+  delete socketClient.defaults.headers.Authorization;
 };
 
 const clearClientAuthorizationHeaders = () => {
-  delete tuneMateClient.defaults.headers["Authorization"];
-  delete socketClient.defaults.headers["Authorization"];
+  setClientAuthorizationHeaders(null);
 };
 
 const getUnauthenticatedState = () => ({
@@ -74,6 +108,8 @@ const initializeAuthState = () => {
     clearClientAuthorizationHeaders();
     return getUnauthenticatedState();
   }
+
+  setClientAuthorizationHeaders(token);
 
   return {
     accessToken: token,
@@ -103,12 +139,11 @@ const useAuthStore = create((set, get) => ({
     if (decodedToken.role) {
       Cookies.set("role", decodedToken.role, AUTH_COOKIE_OPTIONS);
     } else {
-      Cookies.remove("role", { path: "/" });
+      removeCookieWithFallback("role");
     }
 
     Cookies.set("accessToken", token, AUTH_COOKIE_OPTIONS);
-    tuneMateClient.defaults.headers["Authorization"] = `Bearer ${token}`;
-    socketClient.defaults.headers["Authorization"] = `Bearer ${token}`;
+    setClientAuthorizationHeaders(token);
 
     set({
       accessToken: token,
